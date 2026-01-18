@@ -295,22 +295,34 @@ if submenu == "도구 조회":
                 selected_row = selected_rows[0]
                 clicked_tool_id = str(selected_row.get('id', '')).strip()
                 
-                if clicked_tool_id and st.session_state.selected_tool_id != clicked_tool_id:
-                    st.session_state.selected_tool_id = clicked_tool_id
-                    st.session_state.manual_input_tool_id = clicked_tool_id
+                # 선택된 도구 ID가 변경되었거나, 데이터가 없는 경우 항상 업데이트
+                if clicked_tool_id:
+                    # 선택이 변경되었거나, 현재 데이터가 없거나, 다른 도구를 선택한 경우
+                    needs_update = (
+                        st.session_state.selected_tool_id != clicked_tool_id or
+                        st.session_state.selected_tool_data is None or
+                        (st.session_state.selected_tool_data and 
+                         st.session_state.selected_tool_data.get('id') != clicked_tool_id)
+                    )
                     
-                    tool_data = get_tool_by_id(clicked_tool_id)
-                    if tool_data:
-                        st.session_state.selected_tool_data = tool_data
-                    else:
-                        st.warning(f"도구를 찾을 수 없습니다: {clicked_tool_id}")
-                        st.session_state.selected_tool_data = None
-                    
-                    st.rerun()
+                    if needs_update:
+                        st.session_state.selected_tool_id = clicked_tool_id
+                        st.session_state.manual_input_tool_id = clicked_tool_id
+                        
+                        # 항상 최신 데이터를 가져오기 위해 캐시 무효화 후 조회
+                        tool_data = get_tool_by_id(clicked_tool_id)
+                        if tool_data:
+                            st.session_state.selected_tool_data = tool_data
+                        else:
+                            st.warning(f"도구를 찾을 수 없습니다: {clicked_tool_id}")
+                            st.session_state.selected_tool_data = None
+                        
+                        st.rerun()
             except (KeyError, IndexError, AttributeError) as e:
                 if st.session_state.get('debug_mode', False):
                     st.error(f"데이터 매칭 오류: {e}")
         else:
+            # 선택이 해제된 경우
             if st.session_state.selected_tool_id is not None:
                 st.session_state.selected_tool_data = None
                 st.session_state.selected_tool_id = None
