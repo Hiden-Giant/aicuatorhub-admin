@@ -21,6 +21,8 @@ if "FIREBASE_SERVICE_ACCOUNT_KEY_JSON" not in os.environ and "FIREBASE_SERVICE_A
 
 from admin.firebase import get_db
 from admin.components import render_header, render_language_selector
+from admin.i18n import t
+from admin.menu import get_current_language
 
 # 페이지 설정
 st.set_page_config(
@@ -63,13 +65,13 @@ st.sidebar.markdown("""
 render_language_selector()
 
 # 메인 콘텐츠 영역
-render_header("Aicuatorhub Admin")
+current_lang = get_current_language()
+render_header(t("admin_title", current_lang))
 
-st.info("""
-📋 **어드민 시스템에 오신 것을 환영합니다!**
+st.info(f"""
+📋 **{t("welcome_title", current_lang)}**
 
-왼쪽 사이드바의 메뉴를 통해 각 기능에 접근할 수 있습니다.
-Streamlit의 Multi-Page 기능을 사용하여 자동으로 메뉴가 생성됩니다.
+{t("welcome_message", current_lang)}
 """)
 
 # 하단 정보

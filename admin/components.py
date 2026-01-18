@@ -6,6 +6,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 from .menu import get_menu_translation, get_current_language
 from .config import SUPPORTED_LANGUAGES
+from .i18n import t
 
 
 def render_header(title: str = "Aicuatorhub Admin"):
@@ -198,7 +199,7 @@ def render_language_selector():
     }
     
     selected_lang = st.sidebar.selectbox(
-        "언어 선택 / Select Language",
+        t("language_select", current_lang),
         options=list(lang_options.keys()),
         format_func=lambda x: lang_options[x],
         index=0 if current_lang == "ko" else 1,
