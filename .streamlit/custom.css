@@ -1,0 +1,105 @@
+/* Aicuatorhub Admin 커스텀 스타일 */
+
+/* 사이드바 스타일 */
+[data-testid="stSidebar"] {
+    background-color: #FFFFFF;
+    border-right: 1px solid #e2e8f0;
+}
+
+/* 메인 콘텐츠 영역 */
+.main .block-container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+/* 헤더 스타일 */
+h1 {
+    color: #1e293b;
+    font-weight: 700;
+    font-size: 1.5rem;
+}
+
+h2 {
+    color: #334155;
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+
+/* 버튼 스타일 */
+.stButton > button {
+    border-radius: 0.5rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* 메트릭 스타일 */
+[data-testid="stMetricValue"] {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+/* 테이블 스타일 */
+[data-testid="stDataFrame"] {
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+/* 입력 필드 스타일 */
+.stTextInput > div > div > input {
+    border-radius: 0.5rem;
+}
+
+.stSelectbox > div > div > select {
+    border-radius: 0.5rem;
+    font-size: 12px;
+}
+
+/* Selectbox 내부 텍스트 크기 */
+.stSelectbox > div > div > select option {
+    font-size: 12px;
+}
+
+/* 정보 박스 스타일 */
+.stAlert {
+    border-radius: 0.5rem;
+}
+
+/* Disabled 입력 필드 텍스트 색상 개선 (가독성 향상) - 더 진한 색상 */
+.stTextInput > div > div > input:disabled,
+.stTextArea > div > div > textarea:disabled,
+.stNumberInput > div > div > input:disabled {
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
+    opacity: 1 !important;
+    font-weight: 500 !important;
+}
+
+/* Disabled 입력 필드 배경색 개선 */
+.stTextInput > div > div > input:disabled,
+.stTextArea > div > div > textarea:disabled,
+.stNumberInput > div > div > input:disabled {
+    background-color: #f8f9fa !important;
+}
+
+/* 더 강력한 선택자로 모든 disabled 입력 필드 스타일 적용 */
+input[disabled],
+textarea[disabled] {
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
+    opacity: 1 !important;
+    font-weight: 500 !important;
+}
+
+/* Streamlit 특정 선택자로 추가 강제 적용 */
+div[data-baseweb="input"] input[disabled],
+div[data-baseweb="textarea"] textarea[disabled] {
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
+    opacity: 1 !important;
+    font-weight: 500 !important;
+}

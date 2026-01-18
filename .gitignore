@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Firebase 서비스 계정 키 (중요!)
+serviceAccountKey.json
+*.json
+!requirements.txt
+!package.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Excel 및 임시 파일
+*.xlsx
+*.xls
+*.csv
+~$*
+
+# 로그
+*.log
+logs/
+
+# 환경 변수
+.env
+.env.local
+.env.*.local
+
+# Streamlit
+.streamlit/secrets.toml
+
+# 기타
+temp_*
+*.tmp
+*.bak

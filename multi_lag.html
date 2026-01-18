@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>다국어 관리 시스템</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #3498db;
+            --bg-color: #f4f6f8;
+            --border-color: #ddd;
+            --text-color: #333;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 10px;
+            font-size: 12px;
+        }
+
+        /* 헤더 스타일 */
+        header {
+            margin-bottom: 10px;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 6px;
+        }
+
+        h1 {
+            font-size: 18px;
+            color: var(--primary-color);
+        }
+
+        /* 검색 패널 스타일 */
+        .search-panel {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .form-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        select, input[type="text"], input[type="date"] {
+            padding: 6px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            color: white;
+            transition: background 0.2s;
+            font-size: 12px;
+        }
+
+        .btn-search { background-color: var(--primary-color); } /* */
+        .btn-action { background-color: var(--accent-color); } /* */
+        .btn-save { background-color: #27ae60; } /* */
+        .btn-edit { background-color: #f39c12; } /* */
+
+        /* 메인 컨텐츠 영역 */
+        .main-container {
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            padding: 12px;
+        }
+
+        .action-bar {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        /* 데이터 테이블 스타일 */
+        .table-container {
+            overflow-x: auto;
+            margin-bottom: 15px;
+            border: 1px solid var(--border-color);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1500px; /* 가로 스크롤 유도 */
+            font-size: 11px;
+        }
+
+        th, td {
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+            text-align: left;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 200px;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: var(--primary-color);
+            position: sticky;
+            top: 0;
+        }
+
+        /* 테이블 내용 예시 데이터 */
+        tr:hover { background-color: #f1f8ff; cursor: pointer; }
+        tr.selected { background-color: #e3f2fd; }
+
+        /* 상세 편집 영역 스타일 */
+        .detail-editor {
+            border-top: 2px solid var(--border-color);
+            padding-top: 12px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--primary-color);
+            border-left: 3px solid var(--accent-color);
+            padding-left: 6px;
+        }
+
+        .editor-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .input-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .input-wrapper label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            resize: vertical;
+            min-height: 45px;
+            font-size: 12px;
+        }
+
+        /* 오리진 언어 강조 */
+        .origin-section textarea {
+            background-color: #fff9e6; /* 연한 노란색 배경 */
+            border-color: #fae588;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>다국어 관리 시스템</h1> </header>
+
+    <section class="search-panel">
+        <div class="form-group">
+            <label>언어 타입</label> <select>
+                <option>= Select =</option> <option>메뉴</option>
+                <option>도구 정보</option>
+                <option>기타</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>검색 키워드</label> <input type="text" placeholder="검색어를 입력하세요">
+        </div>
+        <div class="form-group">
+            <label>등록 날짜</label> <input type="date"> ~ <input type="date">
+        </div>
+        <button class="btn btn-search">검색</button> </section>
+
+    <div class="main-container">
+        <div class="action-bar">
+            <button class="btn btn-action">필수 지원 언어 일괄 번역</button> <button class="btn btn-save">저장</button> <button class="btn btn-edit">수정</button> </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>No.</th>
+                        <th>언어타입</th>
+                        <th>한국어</th>
+                        <th>영어</th>
+                        <th>일본어 (JP)</th>
+                        <th>중국어 (간체)</th>
+                        <th>스페인어</th>
+                        <th>러시아어</th>
+                        <th>포르투갈어</th>
+                        <th>아랍어</th>
+                        <th>말레이어</th>
+                        <th>인도네시아어</th>
+                        <th>수정 날짜</th>
+                        <th>수정 ID</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="selected">
+                        <td>1</td>
+                        <td>메뉴</td>
+                        <td>Aicuratorhub 사이트는...</td>
+                        <td>Aicuratorhub website...</td>
+                        <td>Aicuratorhubサイトは...</td>
+                        <td>Aicuratorhub 网站是...</td>
+                        <td>El sitio Aicuratorhub...</td>
+                        <td>Сайт Aicuratorhub...</td>
+                        <td>O site Aicuratorhub...</td>
+                        <td>موقع Aicuratorhub...</td>
+                        <td>Laman Aicuratorhub...</td>
+                        <td>Situs Aicuratorhub...</td>
+                        <td>2024-01-12</td>
+                        <td>admin</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>메뉴</td>
+                        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+                        <td>-</td><td>-</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>도구 정보</td>
+                        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+                        <td>-</td><td>-</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="detail-editor">
+            
+            <h3 class="section-title">오리진 언어</h3>
+            <div class="editor-grid origin-section">
+                <div class="input-wrapper">
+                    <label>한국어</label> <textarea>Aicuratorhub 사이트는 Ai 큐레이션 서비스 입니다.</textarea> </div>
+                <div class="input-wrapper">
+                    <label>영어</label> <textarea>Aicuratorhub website is Ai Quration Service .</textarea> </div>
+            </div>
+
+            <h3 class="section-title">필수 지원 언어</h3>
+            <div class="editor-grid">
+                <div class="input-wrapper">
+                    <label>일본어 (JP)</label> <textarea>AicuratorhubサイトはAIキュレーションサービスです。</textarea> </div>
+                <div class="input-wrapper">
+                    <label>중국어 (간체, CN)</label> <textarea>Aicuratorhub 网站是一个 AI 精选服务。</textarea> </div>
+                <div class="input-wrapper">
+                    <label>중국어 (번체, CN)</label> <textarea>Aicuratorhub 网站是一个 AI 精选服务。</textarea> </div>
+                <div class="input-wrapper">
+                    <label>스페인어</label> <textarea>El sitio Aicuratorhub es un servicio de curación de IA.</textarea> </div>
+                <div class="input-wrapper">
+                    <label>러시아어</label> <textarea>Сайт Aicuratorhub — это сервис AI-курирования.</textarea> </div>
+                <div class="input-wrapper">
+                    <label>포르투갈어</label> <textarea>O site Aicuratorhub é um serviço de curadoria de IA.</textarea> </div>
+                <div class="input-wrapper">
+                    <label>아랍어</label> <textarea dir="rtl">موقع Aicuratorhub هو خدمة تنظيم تعتمد على الذكاء الاصطناعي.</textarea> </div>
+                <div class="input-wrapper">
+                    <label>말레이어 (Malay)</label> <textarea>Laman Aicuratorhub ialah perkhidmatan kurasi AI.</textarea> </div>
+                <div class="input-wrapper">
+                    <label>인도네시아어 (Indonesian)</label> <textarea>Situs Aicuratorhub adalah layanan kurasi AI.</textarea> </div>
+            </div>
+
+            <div class="action-bar">
+                <button class="btn btn-save">저장</button> <button class="btn btn-edit">수정</button> </div>
+        </div>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,4 @@
+"""
+Aicuatorhub Admin 공통 모듈
+"""
+__version__ = "1.0.0"
