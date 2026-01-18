@@ -10,7 +10,8 @@ COLLECTIONS = {
     "RECIPES": "my_recipe",  # 사용자 개인 레시피
     "PUBLIC_RECIPES": "public_recipe_collection",  # 공개 레시피 (AI 레시피 관리에서 사용)
     "CATEGORIES": "categories",
-    "TRANSLATIONS": "translations",
+    "TRANSLATIONS": "translations",  # UI 텍스트 번역 (정적 파일 기반)
+    "TOOL_TRANSLATIONS": "tool_translations",  # AI 도구 콘텐츠 번역 (DB 기반)
     "APPLICATIONS": "applications",
     "PAID_SERVICES": "paid-services",
     "TOOL_REGISTRATIONS": "applications/tool-registrations",
