@@ -47,6 +47,8 @@ if 'selected_translation_data' not in st.session_state:
     st.session_state.selected_translation_data = None
 if 'is_edit_mode' not in st.session_state:
     st.session_state.is_edit_mode = False
+if 'search_applied' not in st.session_state:
+    st.session_state.search_applied = False
 
 # 페이지 헤더
 render_page_header("🌐 다국어 관리", "다국어 번역을 조회하고 관리할 수 있습니다.")
@@ -84,6 +86,9 @@ with search_col3:
 with search_col4:
     st.write("")  # 공간
     search_clicked = st.button("🔍 검색", use_container_width=True, type="primary")
+    if search_clicked:
+        st.session_state.search_applied = True
+        st.rerun()
 
 st.markdown("---")
 
@@ -120,13 +125,22 @@ if translation_type_filter != "전체":
         if t.get("type") == type_key
     ]
 
-if search_keyword:
-    search_lower = search_keyword.lower()
+# 키워드 검색 (부분 일치, 모든 언어 필드 및 ID 검색)
+if search_keyword and search_keyword.strip():
+    search_lower = search_keyword.strip().lower()
+    # 모든 지원 언어 필드와 번역 ID를 검색 대상에 포함
+    searchable_fields = [
+        "id",  # 번역 ID
+        "ko", "en", "ja", "zh", "ru", "es", "pt", "ar", "vi", "id", "fr", "hi", "ms"  # 모든 언어 필드
+    ]
+    
     filtered_translations = [
         t for t in filtered_translations
-        if search_lower in str(t.get("ko", "")).lower()
-        or search_lower in str(t.get("en", "")).lower()
-        or search_lower in str(t.get("id", "")).lower()
+        if any(
+            search_lower in str(t.get(field, "")).lower()
+            for field in searchable_fields
+            if t.get(field)  # 필드가 존재하고 값이 있는 경우만 검색
+        )
     ]
 
 if date_from:
