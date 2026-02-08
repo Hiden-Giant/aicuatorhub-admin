@@ -429,69 +429,95 @@ with tab2:
     # AI 도구 콘텐츠 번역 관리
     st.markdown("### 🔧 AI 도구 콘텐츠 번역 관리")
     st.caption("각 AI 도구의 설명, 장단점 등 콘텐츠 번역을 관리합니다. (tool_translations 컬렉션)")
-    
-    # AI 도구 번역 검색 필터
+
+    # AI 도구 번역 검색 필터 (유사일치 키워드 검색)
     st.markdown("#### 🔍 검색 필터")
     tool_search_col1, tool_search_col2, tool_search_col3, tool_search_col4 = st.columns([2, 2, 2, 1])
-    
+
     with tool_search_col1:
+        tool_keyword_filter = st.text_input(
+            "검색 키워드 (유사일치)",
+            key="tool_keyword_filter",
+            placeholder="도구 ID·설명·장단점 등 일부만 입력해도 검색됩니다"
+        )
         tool_id_filter = st.text_input(
             "도구 ID",
             key="tool_id_filter",
-            placeholder="도구 ID를 입력하세요 (예: tldv)"
+            placeholder="도구 ID (예: tldv)"
         )
-    
+
     with tool_search_col2:
         tool_lang_filter = st.selectbox(
             "언어",
             ["전체"] + list(SUPPORTED_LANGUAGES.keys()),
             key="tool_lang_filter"
         )
-    
+
     with tool_search_col3:
         tool_status_filter = st.selectbox(
             "번역 상태",
             ["전체", "ai_generated", "edited", "reviewed", "stale", "error"],
             key="tool_status_filter"
         )
-    
+
     with tool_search_col4:
         st.write("")  # 공간
         tool_search_clicked = st.button("🔍 검색", use_container_width=True, type="primary", key="tool_search_btn")
         if tool_search_clicked:
             st.session_state.tool_search_applied = True
             st.rerun()
-    
+
     st.markdown("---")
-    
+
     # AI 도구 번역 목록 로드
     all_tool_translations = get_all_tool_translations()
-    
+
     # 필터링 적용
-    filtered_tool_translations = all_tool_translations
-    
+    filtered_tool_translations = list(all_tool_translations)
+
+    # 검색 키워드: 도구 ID, 언어, fields 내 모든 텍스트(shortDescription, description, pros, cons 등)에 유사일치
+    if tool_keyword_filter and tool_keyword_filter.strip():
+        keyword_lower = tool_keyword_filter.strip().lower()
+        def _tool_translation_matches_keyword(t):
+            searchable_parts = [
+                str(t.get("toolId", "") or ""),
+                str(t.get("lang", "") or ""),
+                str(t.get("docStatus", "") or ""),
+            ]
+            for field_name, field_data in (t.get("fields") or {}).items():
+                if isinstance(field_data, dict):
+                    text = field_data.get("text")
+                    if isinstance(text, list):
+                        searchable_parts.extend(str(x) for x in text)
+                    elif text is not None:
+                        searchable_parts.append(str(text))
+            combined = " ".join(searchable_parts).lower()
+            return keyword_lower in combined
+        filtered_tool_translations = [
+            t for t in filtered_tool_translations
+            if _tool_translation_matches_keyword(t)
+        ]
+
     if tool_id_filter and tool_id_filter.strip():
         tool_id_lower = tool_id_filter.strip().lower()
         filtered_tool_translations = [
             t for t in filtered_tool_translations
-            if tool_id_lower in t.get("toolId", "").lower()
+            if tool_id_lower in (t.get("toolId") or "").lower()
         ]
-    
+
     if tool_lang_filter != "전체":
         filtered_tool_translations = [
             t for t in filtered_tool_translations
             if t.get("lang") == tool_lang_filter
         ]
-    
+
     if tool_status_filter != "전체":
-        # fields 내부의 status 검색
         filtered_tool_translations = [
             t for t in filtered_tool_translations
             if any(
-                field_data.get("status") == tool_status_filter
-                for field_data in t.get("fields", {}).values()
-                if isinstance(field_data, dict)
-            ) or t.get("docStatus") == tool_status_filter
+                isinstance(field_data, dict) and field_data.get("status") == tool_status_filter
+                for field_data in (t.get("fields") or {}).values()
+            ) or (t.get("docStatus") == tool_status_filter)
         ]
     
     # 결과 정보
