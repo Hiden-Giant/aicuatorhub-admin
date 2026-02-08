@@ -52,9 +52,18 @@ if 'is_edit_mode' not in st.session_state:
     st.session_state.is_edit_mode = False
 if 'search_applied' not in st.session_state:
     st.session_state.search_applied = False
+if 'selected_tool_translation_data' not in st.session_state:
+    st.session_state.selected_tool_translation_data = None
+if 'selected_tool_id' not in st.session_state:
+    st.session_state.selected_tool_id = None
+if 'selected_tool_lang' not in st.session_state:
+    st.session_state.selected_tool_lang = None
 
 # 페이지 헤더
 render_page_header("🌐 다국어 관리", "다국어 번역을 조회하고 관리할 수 있습니다.")
+
+# 번역 목록 (탭·사이드바 공용)
+all_translations = get_all_translations()
 
 # 탭 선택 (UI 텍스트 번역 vs AI 도구 콘텐츠 번역)
 tab1, tab2 = st.tabs(["📝 UI 텍스트 번역", "🔧 AI 도구 콘텐츠 번역"])
@@ -63,224 +72,215 @@ with tab1:
     # 기존 UI 텍스트 번역 관리 코드
     st.markdown("### 📝 UI 텍스트 번역 관리")
     st.caption("사이트 전체 UI 요소의 번역을 관리합니다. (public/lang/*.json 기반)")
-    
-    # 검색 패널
+
+    # 검색 패널 (탭 내부에 배치)
     st.markdown("### 🔍 검색 필터")
     search_col1, search_col2, search_col3, search_col4 = st.columns([2, 2, 2, 1])
 
-with search_col1:
-    translation_type_filter = st.selectbox(
-        "언어 타입",
-        ["전체"] + list(TRANSLATION_TYPES.values()),
-        key="translation_type_filter"
-    )
-
-with search_col2:
-    search_keyword = st.text_input(
-        "검색 키워드",
-        key="search_keyword",
-        placeholder="검색어를 입력하세요"
-    )
-
-with search_col3:
-    date_from = st.date_input(
-        "등록 날짜 (시작)",
-        value=None,
-        key="date_from"
-    )
-    date_to = st.date_input(
-        "등록 날짜 (종료)",
-        value=None,
-        key="date_to"
-    )
-
-with search_col4:
-    st.write("")  # 공간
-    search_clicked = st.button("🔍 검색", use_container_width=True, type="primary")
-    if search_clicked:
-        st.session_state.search_applied = True
-        st.rerun()
-
-st.markdown("---")
-
-# 액션 바
-col_action1, col_action2, col_action3, col_action4 = st.columns([2, 1, 1, 1])
-with col_action1:
-    st.write("")  # 공간
-with col_action2:
-    if st.button("🌍 필수 지원 언어 일괄 번역", use_container_width=True):
-        st.info("일괄 번역 기능은 준비 중입니다.")
-with col_action3:
-    if st.button("💾 저장", use_container_width=True, type="primary"):
-        if st.session_state.selected_translation_data and st.session_state.is_edit_mode:
-            st.session_state.is_edit_mode = False
-            st.rerun()
-with col_action4:
-    if st.button("✏️ 수정", use_container_width=True):
-        if st.session_state.selected_translation_data:
-            st.session_state.is_edit_mode = True
-            st.rerun()
-
-st.markdown("---")
-
-# 번역 목록 로드 및 필터링
-all_translations = get_all_translations()
-
-# 필터링 적용
-filtered_translations = all_translations
-
-if translation_type_filter != "전체":
-    type_key = [k for k, v in TRANSLATION_TYPES.items() if v == translation_type_filter][0]
-    filtered_translations = [
-        t for t in filtered_translations
-        if t.get("type") == type_key
-    ]
-
-# 키워드 검색 (부분 일치, 모든 언어 필드 및 ID 검색)
-if search_keyword and search_keyword.strip():
-    search_lower = search_keyword.strip().lower()
-    # 모든 지원 언어 필드와 번역 ID를 검색 대상에 포함
-    searchable_fields = [
-        "id",  # 번역 ID
-        "ko", "en", "ja", "zh", "ru", "es", "pt", "ar", "vi", "id", "fr", "hi", "ms"  # 모든 언어 필드
-    ]
-    
-    filtered_translations = [
-        t for t in filtered_translations
-        if any(
-            search_lower in str(t.get(field, "")).lower()
-            for field in searchable_fields
-            if t.get(field)  # 필드가 존재하고 값이 있는 경우만 검색
+    with search_col1:
+        translation_type_filter = st.selectbox(
+            "언어 타입",
+            ["전체"] + list(TRANSLATION_TYPES.values()),
+            key="translation_type_filter"
         )
-    ]
 
-if date_from:
-    filtered_translations = [
-        t for t in filtered_translations
-        if t.get("createdAt") and datetime.fromisoformat(t.get("createdAt").replace("Z", "+00:00")).date() >= date_from
-    ]
+    with search_col2:
+        search_keyword = st.text_input(
+            "검색 키워드 (한국어/영어/메뉴 이름 등)",
+            key="search_keyword",
+            placeholder="한국어·영어·메뉴 이름으로 검색..."
+        )
 
-if date_to:
-    filtered_translations = [
-        t for t in filtered_translations
-        if t.get("createdAt") and datetime.fromisoformat(t.get("createdAt").replace("Z", "+00:00")).date() <= date_to
-    ]
+    with search_col3:
+        date_from = st.date_input(
+            "등록 날짜 (시작)",
+            value=None,
+            key="date_from"
+        )
+        date_to = st.date_input(
+            "등록 날짜 (종료)",
+            value=None,
+            key="date_to"
+        )
 
-# 결과 정보
-st.info(f"📊 검색 결과: {len(filtered_translations)}개 (전체 {len(all_translations)}개)")
+    with search_col4:
+        st.write("")  # 공간
+        search_clicked = st.button("🔍 검색", use_container_width=True, type="primary", key="i18n_search_btn")
+        if search_clicked:
+            st.session_state.search_applied = True
+            st.rerun()
 
-# 번역 목록 테이블
-if filtered_translations:
-    # 테이블 데이터 준비
-    table_data = []
-    for idx, trans in enumerate(filtered_translations, 1):
-        formatted = format_translation_for_display(trans, max_length=30)
-        row = {
-            "No.": idx,
-            "언어타입": TRANSLATION_TYPES.get(trans.get("type", ""), trans.get("type", "-")),
-            "한국어": formatted.get("ko", "-"),
-            "영어": formatted.get("en", "-"),
-            "일본어 (JP)": formatted.get("ja", "-"),
-            "중국어 (간체)": formatted.get("zh", "-"),
-            "스페인어": formatted.get("es", "-"),
-            "러시아어": formatted.get("ru", "-"),
-            "포르투갈어": formatted.get("pt", "-"),
-            "아랍어": formatted.get("ar", "-"),
-            "말레이어": formatted.get("ms", "-"),
-            "인도네시아어": formatted.get("id", "-"),
-            "수정 날짜": format_datetime(trans.get("updatedAt"), "%Y-%m-%d") if trans.get("updatedAt") else "-",
-            "수정 ID": trans.get("updatedBy", "-"),
-            "_id": trans.get("id", "")  # 내부 사용
-        }
-        table_data.append(row)
-    
-    df = pd.DataFrame(table_data)
-    
-    # AgGrid 설정
-    gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_selection('single')
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
-    gb.configure_default_column(
-        resizable=True,
-        sortable=True,
-        filterable=True,
-        editable=False,
-        minWidth=100,
-        wrapText=True
-    )
-    
-    # 컬럼 폭 설정
-    gb.configure_column("No.", width=60, pinned='left')
-    gb.configure_column("언어타입", width=100)
-    gb.configure_column("한국어", width=200)
-    gb.configure_column("영어", width=200)
-    gb.configure_column("일본어 (JP)", width=150)
-    gb.configure_column("중국어 (간체)", width=150)
-    gb.configure_column("스페인어", width=150)
-    gb.configure_column("러시아어", width=150)
-    gb.configure_column("포르투갈어", width=150)
-    gb.configure_column("아랍어", width=150)
-    gb.configure_column("말레이어", width=150)
-    gb.configure_column("인도네시아어", width=150)
-    gb.configure_column("수정 날짜", width=120)
-    gb.configure_column("수정 ID", width=100)
-    gb.configure_column("_id", hide=True)  # 숨김
-    
-    grid_options = gb.build()
-    
-    st.markdown("### 📋 번역 목록")
-    st.caption("💡 행을 클릭하여 선택하면 상세 정보가 표시됩니다.")
-    
-    # AgGrid 출력
-    grid_response = AgGrid(
-        df,
-        gridOptions=grid_options,
-        height=400,
-        width='100%',
-        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
-        allow_unsafe_jscode=True,
-        key="translation_grid",
-        theme='streamlit'
-    )
-    
-    # 선택 이벤트 처리
-    selected_rows = grid_response.get('selected_rows', [])
-    
-    if isinstance(selected_rows, pd.DataFrame):
-        selected_rows = selected_rows.to_dict('records')
-    elif selected_rows is None:
-        selected_rows = []
-    
-    if len(selected_rows) > 0:
-        try:
-            selected_row = selected_rows[0]
-            clicked_trans_id = str(selected_row.get('_id', '')).strip()
-            
-            if clicked_trans_id and st.session_state.selected_translation_id != clicked_trans_id:
-                st.session_state.selected_translation_id = clicked_trans_id
-                trans_data = get_translation_by_id(clicked_trans_id)
-                if trans_data:
-                    st.session_state.selected_translation_data = trans_data
-                else:
-                    st.warning(f"번역을 찾을 수 없습니다: {clicked_trans_id}")
-                    st.session_state.selected_translation_data = None
+    st.markdown("---")
+
+    # 액션 바
+    col_action1, col_action2, col_action3, col_action4 = st.columns([2, 1, 1, 1])
+    with col_action1:
+        st.write("")  # 공간
+    with col_action2:
+        if st.button("🌍 필수 지원 언어 일괄 번역", use_container_width=True, key="i18n_batch_btn"):
+            st.info("일괄 번역 기능은 준비 중입니다.")
+    with col_action3:
+        if st.button("💾 저장", use_container_width=True, type="primary", key="i18n_save_btn"):
+            if st.session_state.selected_translation_data and st.session_state.is_edit_mode:
+                st.session_state.is_edit_mode = False
                 st.rerun()
-        except Exception as e:
-            if st.session_state.get('debug_mode', False):
-                st.error(f"데이터 매칭 오류: {e}")
-else:
-    st.warning("검색 결과가 없습니다.")
+    with col_action4:
+        if st.button("✏️ 수정", use_container_width=True, key="i18n_edit_btn"):
+            if st.session_state.selected_translation_data:
+                st.session_state.is_edit_mode = True
+                st.rerun()
 
-# 상세 편집 영역
-st.markdown("---")
-st.markdown("### 📝 상세 편집")
+    st.markdown("---")
 
-if st.session_state.selected_translation_data:
-    trans = st.session_state.selected_translation_data
-    
-    # 오리진 언어 섹션
-    st.markdown("""
+    # 필터링 적용 (all_translations는 상단에서 로드)
+    filtered_translations = list(all_translations)
+
+    if translation_type_filter != "전체":
+        type_key = [k for k, v in TRANSLATION_TYPES.items() if v == translation_type_filter][0]
+        filtered_translations = [
+            t for t in filtered_translations
+            if t.get("type") == type_key
+        ]
+
+    # 키워드 검색: 한국어(ko), 영어(en), 메뉴 ID(id) 등 모든 언어 필드 검색
+    if search_keyword and search_keyword.strip():
+        search_lower = search_keyword.strip().lower()
+        searchable_fields = ["id", "ko", "en", "ja", "zh", "ru", "es", "pt", "ar", "vi", "fr", "hi", "ms"]
+        filtered_translations = [
+            t for t in filtered_translations
+            if any(
+                search_lower in str(t.get(field, "") or "").lower()
+                for field in searchable_fields
+            )
+        ]
+
+    if date_from:
+        filtered_translations = [
+            t for t in filtered_translations
+            if t.get("createdAt") and datetime.fromisoformat(t.get("createdAt").replace("Z", "+00:00")).date() >= date_from
+        ]
+
+    if date_to:
+        filtered_translations = [
+            t for t in filtered_translations
+            if t.get("createdAt") and datetime.fromisoformat(t.get("createdAt").replace("Z", "+00:00")).date() <= date_to
+        ]
+
+    # 결과 정보
+    st.info(f"📊 검색 결과: {len(filtered_translations)}개 (전체 {len(all_translations)}개)")
+
+    # 번역 목록 테이블
+    if filtered_translations:
+        # 테이블 데이터 준비
+        table_data = []
+        for idx, trans in enumerate(filtered_translations, 1):
+            formatted = format_translation_for_display(trans, max_length=30)
+            row = {
+                "No.": idx,
+                "언어타입": TRANSLATION_TYPES.get(trans.get("type", ""), trans.get("type", "-")),
+                "한국어": formatted.get("ko", "-"),
+                "영어": formatted.get("en", "-"),
+                "일본어 (JP)": formatted.get("ja", "-"),
+                "중국어 (간체)": formatted.get("zh", "-"),
+                "스페인어": formatted.get("es", "-"),
+                "러시아어": formatted.get("ru", "-"),
+                "포르투갈어": formatted.get("pt", "-"),
+                "아랍어": formatted.get("ar", "-"),
+                "말레이어": formatted.get("ms", "-"),
+                "인도네시아어": formatted.get("id", "-"),
+                "수정 날짜": format_datetime(trans.get("updatedAt"), "%Y-%m-%d") if trans.get("updatedAt") else "-",
+                "수정 ID": trans.get("updatedBy", "-"),
+                "_id": trans.get("id", "")  # 내부 사용
+            }
+            table_data.append(row)
+
+        df = pd.DataFrame(table_data)
+
+        # AgGrid 설정
+        gb = GridOptionsBuilder.from_dataframe(df)
+        gb.configure_selection('single')
+        gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=20)
+        gb.configure_default_column(
+            resizable=True,
+            sortable=True,
+            filterable=True,
+            editable=False,
+            minWidth=100,
+            wrapText=True
+        )
+
+        # 컬럼 폭 설정
+        gb.configure_column("No.", width=60, pinned='left')
+        gb.configure_column("언어타입", width=100)
+        gb.configure_column("한국어", width=200)
+        gb.configure_column("영어", width=200)
+        gb.configure_column("일본어 (JP)", width=150)
+        gb.configure_column("중국어 (간체)", width=150)
+        gb.configure_column("스페인어", width=150)
+        gb.configure_column("러시아어", width=150)
+        gb.configure_column("포르투갈어", width=150)
+        gb.configure_column("아랍어", width=150)
+        gb.configure_column("말레이어", width=150)
+        gb.configure_column("인도네시아어", width=150)
+        gb.configure_column("수정 날짜", width=120)
+        gb.configure_column("수정 ID", width=100)
+        gb.configure_column("_id", hide=True)  # 숨김
+
+        grid_options = gb.build()
+
+        st.markdown("### 📋 번역 목록")
+        st.caption("💡 행을 클릭하여 선택하면 상세 정보가 표시됩니다.")
+
+        # AgGrid 출력
+        grid_response = AgGrid(
+            df,
+            gridOptions=grid_options,
+            height=400,
+            width='100%',
+            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+            update_mode=GridUpdateMode.SELECTION_CHANGED,
+            allow_unsafe_jscode=True,
+            key="translation_grid",
+            theme='streamlit'
+        )
+
+        # 선택 이벤트 처리
+        selected_rows = grid_response.get('selected_rows', [])
+
+        if isinstance(selected_rows, pd.DataFrame):
+            selected_rows = selected_rows.to_dict('records')
+        elif selected_rows is None:
+            selected_rows = []
+
+        if len(selected_rows) > 0:
+            try:
+                selected_row = selected_rows[0]
+                clicked_trans_id = str(selected_row.get('_id', '')).strip()
+
+                if clicked_trans_id and st.session_state.selected_translation_id != clicked_trans_id:
+                    st.session_state.selected_translation_id = clicked_trans_id
+                    trans_data = get_translation_by_id(clicked_trans_id)
+                    if trans_data:
+                        st.session_state.selected_translation_data = trans_data
+                    else:
+                        st.warning(f"번역을 찾을 수 없습니다: {clicked_trans_id}")
+                        st.session_state.selected_translation_data = None
+                    st.rerun()
+            except Exception as e:
+                if st.session_state.get('debug_mode', False):
+                    st.error(f"데이터 매칭 오류: {e}")
+    else:
+        st.warning("검색 결과가 없습니다.")
+
+    # 상세 편집 영역 (탭1 내부)
+    st.markdown("---")
+    st.markdown("### 📝 상세 편집")
+
+    if st.session_state.selected_translation_data:
+        trans = st.session_state.selected_translation_data
+
+        # 오리진 언어 섹션
+        st.markdown("""
     <div style="
         font-size: 14px;
         font-weight: bold;
@@ -289,139 +289,139 @@ if st.session_state.selected_translation_data:
         border-left: 3px solid #3498db;
         padding-left: 6px;
     ">오리진 언어</div>
-    """, unsafe_allow_html=True)
-    
-    origin_col1, origin_col2 = st.columns(2)
-    
-    with origin_col1:
-        ko_value = trans.get("ko", "")
-        if st.session_state.is_edit_mode:
-            ko_text = st.text_area(
-                "한국어",
-                value=ko_value,
-                height=80,
-                key="edit_ko",
-                help="오리진 언어 (한국어)"
-            )
-        else:
-            st.text_area(
-                "한국어",
-                value=ko_value,
-                height=80,
-                key="view_ko",
-                disabled=True
-            )
-            ko_text = ko_value
-    
-    with origin_col2:
-        en_value = trans.get("en", "")
-        if st.session_state.is_edit_mode:
-            en_text = st.text_area(
-                "영어",
-                value=en_value,
-                height=80,
-                key="edit_en",
-                help="오리진 언어 (영어)"
-            )
-        else:
-            st.text_area(
-                "영어",
-                value=en_value,
-                height=80,
-                key="view_en",
-                disabled=True
-            )
-            en_text = en_value
-    
-    # 오리진 언어 스타일 적용
-    st.markdown("""
-    <style>
-    div[data-testid="stTextArea"] textarea {
-        background-color: #fff9e6 !important;
-        border-color: #fae588 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # 필수 지원 언어 섹션
-    st.markdown("""
-    <div style="
-        font-size: 14px;
-        font-weight: bold;
-        margin-bottom: 10px;
-        color: #2c3e50;
-        border-left: 3px solid #3498db;
-        padding-left: 6px;
-    ">필수 지원 언어</div>
-    """, unsafe_allow_html=True)
-    
-    # 필수 지원 언어를 2열 그리드로 표시
-    required_lang_cols = st.columns(2)
-    
-    required_lang_data = {}
-    lang_index = 0
-    
-    # 필수 지원 언어 목록 (HTML mockup 기준)
-    required_languages_display = [
-        ("ja", "일본어 (JP)"),
-        ("zh", "중국어 (간체, CN)"),
-        ("es", "스페인어"),
-        ("ru", "러시아어"),
-        ("pt", "포르투갈어"),
-        ("ar", "아랍어"),
-        ("ms", "말레이어 (Malay)"),
-        ("id", "인도네시아어 (Indonesian)")
-    ]
-    
-    for lang_code, lang_label in required_languages_display:
-        col_idx = lang_index % 2
-        with required_lang_cols[col_idx]:
-            lang_value = trans.get(lang_code, "")
+        """, unsafe_allow_html=True)
+
+        origin_col1, origin_col2 = st.columns(2)
+
+        with origin_col1:
+            ko_value = trans.get("ko", "")
             if st.session_state.is_edit_mode:
-                lang_text = st.text_area(
-                    lang_label,
-                    value=lang_value,
+                ko_text = st.text_area(
+                    "한국어",
+                    value=ko_value,
                     height=80,
-                    key=f"edit_{lang_code}_{lang_index}",
-                    help=f"필수 지원 언어 ({lang_label})"
+                    key="edit_ko",
+                    help="오리진 언어 (한국어)"
                 )
-                required_lang_data[lang_code] = lang_text
             else:
                 st.text_area(
-                    lang_label,
-                    value=lang_value,
+                    "한국어",
+                    value=ko_value,
                     height=80,
-                    key=f"view_{lang_code}_{lang_index}",
+                    key="view_ko",
                     disabled=True
                 )
-                required_lang_data[lang_code] = lang_value
-        lang_index += 1
-    
-    # 저장 버튼 (편집 모드일 때만)
-    if st.session_state.is_edit_mode:
+                ko_text = ko_value
+
+        with origin_col2:
+            en_value = trans.get("en", "")
+            if st.session_state.is_edit_mode:
+                en_text = st.text_area(
+                    "영어",
+                    value=en_value,
+                    height=80,
+                    key="edit_en",
+                    help="오리진 언어 (영어)"
+                )
+            else:
+                st.text_area(
+                    "영어",
+                    value=en_value,
+                    height=80,
+                    key="view_en",
+                    disabled=True
+                )
+                en_text = en_value
+
+        # 오리진 언어 스타일 적용
+        st.markdown("""
+        <style>
+        div[data-testid="stTextArea"] textarea {
+            background-color: #fff9e6 !important;
+            border-color: #fae588 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
         st.markdown("---")
-        col_save1, col_save2 = st.columns([1, 1])
-        with col_save1:
-            if st.button("💾 저장", use_container_width=True, type="primary"):
-                update_data = {
-                    "ko": ko_text,
-                    "en": en_text,
-                    **required_lang_data
-                }
-                
-                if update_translation(st.session_state.selected_translation_id, update_data):
-                    st.success("✅ 번역이 업데이트되었습니다!")
+
+        # 필수 지원 언어 섹션
+        st.markdown("""
+        <div style="
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2c3e50;
+            border-left: 3px solid #3498db;
+            padding-left: 6px;
+        ">필수 지원 언어</div>
+        """, unsafe_allow_html=True)
+
+        # 필수 지원 언어를 2열 그리드로 표시
+        required_lang_cols = st.columns(2)
+
+        required_lang_data = {}
+        lang_index = 0
+
+        # 필수 지원 언어 목록 (HTML mockup 기준)
+        required_languages_display = [
+            ("ja", "일본어 (JP)"),
+            ("zh", "중국어 (간체, CN)"),
+            ("es", "스페인어"),
+            ("ru", "러시아어"),
+            ("pt", "포르투갈어"),
+            ("ar", "아랍어"),
+            ("ms", "말레이어 (Malay)"),
+            ("id", "인도네시아어 (Indonesian)")
+        ]
+
+        for lang_code, lang_label in required_languages_display:
+            col_idx = lang_index % 2
+            with required_lang_cols[col_idx]:
+                lang_value = trans.get(lang_code, "")
+                if st.session_state.is_edit_mode:
+                    lang_text = st.text_area(
+                        lang_label,
+                        value=lang_value,
+                        height=80,
+                        key=f"edit_{lang_code}_{lang_index}",
+                        help=f"필수 지원 언어 ({lang_label})"
+                    )
+                    required_lang_data[lang_code] = lang_text
+                else:
+                    st.text_area(
+                        lang_label,
+                        value=lang_value,
+                        height=80,
+                        key=f"view_{lang_code}_{lang_index}",
+                        disabled=True
+                    )
+                    required_lang_data[lang_code] = lang_value
+            lang_index += 1
+
+        # 저장 버튼 (편집 모드일 때만)
+        if st.session_state.is_edit_mode:
+            st.markdown("---")
+            col_save1, col_save2 = st.columns([1, 1])
+            with col_save1:
+                if st.button("💾 저장", use_container_width=True, type="primary", key="i18n_detail_save_btn"):
+                    update_data = {
+                        "ko": ko_text,
+                        "en": en_text,
+                        **required_lang_data
+                    }
+
+                    if update_translation(st.session_state.selected_translation_id, update_data):
+                        st.success("✅ 번역이 업데이트되었습니다!")
+                        st.session_state.is_edit_mode = False
+                        get_all_translations.clear()
+                        get_translation_by_id.clear()
+                        st.rerun()
+
+            with col_save2:
+                if st.button("❌ 취소", use_container_width=True, key="i18n_detail_cancel_btn"):
                     st.session_state.is_edit_mode = False
-                    get_all_translations.clear()
-                    get_translation_by_id.clear()
                     st.rerun()
-        
-        with col_save2:
-            if st.button("❌ 취소", use_container_width=True):
-                st.session_state.is_edit_mode = False
-                st.rerun()
     else:
         st.info("👆 위의 테이블에서 행을 선택하여 번역을 편집하세요.")
 

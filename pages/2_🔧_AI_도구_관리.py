@@ -363,25 +363,27 @@ if submenu == "도구 조회":
         
         if st.session_state.selected_tool_data:
             tool = st.session_state.selected_tool_data
-            
+            # 다른 제품 선택 시 하단 상세 위젯이 새 데이터로 갱신되도록 동적 key 사용
+            _tk = (st.session_state.selected_tool_id or "").replace(".", "_")
+
             tab1, tab2, tab3, tab4, tab5 = st.tabs([
                 "기본 정보", "카테고리 정보", "태그/기능", "평가 정보", "전체 데이터"
             ])
-            
+
             with tab1:
                 col_info1, col_info2 = st.columns([2, 1])
                 with col_info1:
-                    st.text_input("도구 ID", value=tool.get('id', ''), disabled=True, key="detail_id")
-                    st.text_input("도구 이름", value=tool.get('name', ''), disabled=True, key="detail_name")
-                    st.text_input("회사명", value=tool.get('company', ''), disabled=True, key="detail_company")
-                    st.text_area("설명", value=tool.get('description', ''), disabled=True, height=100, key="detail_description")
-                    st.text_input("웹사이트 URL", value=tool.get('websiteUrl', ''), disabled=True, key="detail_url")
+                    st.text_input("도구 ID", value=tool.get('id', ''), disabled=True, key=f"detail_id_{_tk}")
+                    st.text_input("도구 이름", value=tool.get('name', ''), disabled=True, key=f"detail_name_{_tk}")
+                    st.text_input("회사명", value=tool.get('company', ''), disabled=True, key=f"detail_company_{_tk}")
+                    st.text_area("설명", value=tool.get('description', ''), disabled=True, height=100, key=f"detail_description_{_tk}")
+                    st.text_input("웹사이트 URL", value=tool.get('websiteUrl', ''), disabled=True, key=f"detail_url_{_tk}")
                 with col_info2:
                     logo_url = tool.get('logoUrl')
                     image_url = tool.get('imageUrl')
                     valid_logo_url = logo_url if logo_url and isinstance(logo_url, str) and logo_url.strip() else None
                     valid_image_url = image_url if image_url and isinstance(image_url, str) and image_url.strip() else None
-                    
+
                     display_url = valid_logo_url or valid_image_url
                     if display_url:
                         try:
@@ -390,49 +392,49 @@ if submenu == "도구 조회":
                             st.warning(f"이미지를 불러올 수 없습니다: {str(e)}")
                     else:
                         st.info("이미지 없음")
-                    
-                    st.text_input("로고 파일명", value=tool.get('logoFileName', ''), disabled=True, key="detail_logo_file")
-                    st.text_input("이미지 URL", value=tool.get('imageUrl', '') if tool.get('imageUrl') else '', disabled=True, key="detail_image_url")
-                    st.text_input("로고 URL", value=tool.get('logoUrl', '') if tool.get('logoUrl') else '', disabled=True, key="detail_logo_url")
-            
+
+                    st.text_input("로고 파일명", value=tool.get('logoFileName', ''), disabled=True, key=f"detail_logo_file_{_tk}")
+                    st.text_input("이미지 URL", value=tool.get('imageUrl', '') if tool.get('imageUrl') else '', disabled=True, key=f"detail_image_url_{_tk}")
+                    st.text_input("로고 URL", value=tool.get('logoUrl', '') if tool.get('logoUrl') else '', disabled=True, key=f"detail_logo_url_{_tk}")
+
             with tab2:
                 col_cat1, col_cat2 = st.columns(2)
                 with col_cat1:
-                    st.text_input("주 카테고리", value=tool.get('primaryCategory', ''), disabled=True, key="detail_primary_cat")
-                    st.text_input("주 카테고리 (한글)", value=tool.get('primaryCategoryKr', ''), disabled=True, key="detail_primary_cat_kr")
-                    st.text_input("주 카테고리 (영문)", value=tool.get('primaryCategoryEn', ''), disabled=True, key="detail_primary_cat_en")
+                    st.text_input("주 카테고리", value=tool.get('primaryCategory', ''), disabled=True, key=f"detail_primary_cat_{_tk}")
+                    st.text_input("주 카테고리 (한글)", value=tool.get('primaryCategoryKr', ''), disabled=True, key=f"detail_primary_cat_kr_{_tk}")
+                    st.text_input("주 카테고리 (영문)", value=tool.get('primaryCategoryEn', ''), disabled=True, key=f"detail_primary_cat_en_{_tk}")
                 with col_cat2:
-                    st.text_input("하위 카테고리 (한글)", value=tool.get('subCategoryKr', ''), disabled=True, key="detail_sub_cat_kr")
-                    st.text_input("하위 카테고리 (영문)", value=tool.get('subCategoryEn', ''), disabled=True, key="detail_sub_cat_en")
-                    st.text_area("카테고리 배열", value=format_value(tool.get('categories', [])), disabled=True, height=80, key="detail_categories")
-                    st.text_area("카테고리 표시명", value=format_value(tool.get('categoryDisplayNames', {})), disabled=True, height=80, key="detail_cat_display")
-            
+                    st.text_input("하위 카테고리 (한글)", value=tool.get('subCategoryKr', ''), disabled=True, key=f"detail_sub_cat_kr_{_tk}")
+                    st.text_input("하위 카테고리 (영문)", value=tool.get('subCategoryEn', ''), disabled=True, key=f"detail_sub_cat_en_{_tk}")
+                    st.text_area("카테고리 배열", value=format_value(tool.get('categories', [])), disabled=True, height=80, key=f"detail_categories_{_tk}")
+                    st.text_area("카테고리 표시명", value=format_value(tool.get('categoryDisplayNames', {})), disabled=True, height=80, key=f"detail_cat_display_{_tk}")
+
             with tab3:
                 col_tag1, col_tag2 = st.columns(2)
                 with col_tag1:
-                    st.text_area("태그 (한글)", value=format_value(tool.get('tagsKr', [])), disabled=True, height=100, key="detail_tags_kr")
-                    st.text_area("태그 (영문)", value=format_value(tool.get('tagsEn', [])), disabled=True, height=100, key="detail_tags_en")
+                    st.text_area("태그 (한글)", value=format_value(tool.get('tagsKr', [])), disabled=True, height=100, key=f"detail_tags_kr_{_tk}")
+                    st.text_area("태그 (영문)", value=format_value(tool.get('tagsEn', [])), disabled=True, height=100, key=f"detail_tags_en_{_tk}")
                 with col_tag2:
-                    st.text_area("기능 (한글)", value=format_value(tool.get('featuresKr', [])), disabled=True, height=100, key="detail_features_kr")
-                    st.text_area("기능 (영문)", value=format_value(tool.get('featuresEn', [])), disabled=True, height=100, key="detail_features_en")
-                    st.text_area("기능 (일반)", value=format_value(tool.get('features', [])), disabled=True, height=100, key="detail_features")
-            
+                    st.text_area("기능 (한글)", value=format_value(tool.get('featuresKr', [])), disabled=True, height=100, key=f"detail_features_kr_{_tk}")
+                    st.text_area("기능 (영문)", value=format_value(tool.get('featuresEn', [])), disabled=True, height=100, key=f"detail_features_en_{_tk}")
+                    st.text_area("기능 (일반)", value=format_value(tool.get('features', [])), disabled=True, height=100, key=f"detail_features_{_tk}")
+
             with tab4:
                 col_rating1, col_rating2 = st.columns(2)
                 with col_rating1:
-                    st.number_input("평점", value=float(tool.get('rating', 0)), disabled=True, key="detail_rating")
-                    st.number_input("리뷰 개수", value=int(tool.get('reviewCount', 0)), disabled=True, key="detail_review_count")
-                    st.number_input("인기 점수", value=int(tool.get('popularityScore', 0)), disabled=True, key="detail_popularity")
+                    st.number_input("평점", value=float(tool.get('rating', 0)), disabled=True, key=f"detail_rating_{_tk}")
+                    st.number_input("리뷰 개수", value=int(tool.get('reviewCount', 0)), disabled=True, key=f"detail_review_count_{_tk}")
+                    st.number_input("인기 점수", value=int(tool.get('popularityScore', 0)), disabled=True, key=f"detail_popularity_{_tk}")
                 with col_rating2:
-                    st.text_input("상태", value=tool.get('status', ''), disabled=True, key="detail_status")
-                    st.checkbox("검증됨", value=tool.get('verified', False), disabled=True, key="detail_verified")
-                    st.checkbox("추천 도구", value=tool.get('featured', False), disabled=True, key="detail_featured")
-                    st.text_input("출처", value=tool.get('source', ''), disabled=True, key="detail_source")
-                    st.text_input("출처 URL", value=tool.get('sourceUrl', ''), disabled=True, key="detail_source_url")
-            
+                    st.text_input("상태", value=tool.get('status', ''), disabled=True, key=f"detail_status_{_tk}")
+                    st.checkbox("검증됨", value=tool.get('verified', False), disabled=True, key=f"detail_verified_{_tk}")
+                    st.checkbox("추천 도구", value=tool.get('featured', False), disabled=True, key=f"detail_featured_{_tk}")
+                    st.text_input("출처", value=tool.get('source', ''), disabled=True, key=f"detail_source_{_tk}")
+                    st.text_input("출처 URL", value=tool.get('sourceUrl', ''), disabled=True, key=f"detail_source_url_{_tk}")
+
             with tab5:
                 tool_json = convert_firestore_data(tool)
-                st.text_area("전체 데이터 (JSON)", value=json.dumps(tool_json, ensure_ascii=False, indent=2, default=str), height=500, disabled=True, key="detail_json")
+                st.text_area("전체 데이터 (JSON)", value=json.dumps(tool_json, ensure_ascii=False, indent=2, default=str), height=500, disabled=True, key=f"detail_json_{_tk}")
             
             # 액션 버튼
             st.markdown("---")
