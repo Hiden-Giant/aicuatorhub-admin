@@ -16,9 +16,17 @@ from admin.firebase import get_db
 from admin.components import render_page_header, render_language_selector
 from admin.config import (
     COLLECTIONS, SUPPORTED_LANGUAGES, TRANSLATION_TYPES,
-    ORIGIN_LANGUAGES, REQUIRED_LANGUAGES, FRONT_LANG_JSON_DIR
+    ORIGIN_LANGUAGES, REQUIRED_LANGUAGES
 )
-from admin.ui_translation_sync import export_ui_translations_to_json, import_ui_translations_from_json
+try:
+    from admin.config import FRONT_LANG_JSON_DIR
+except ImportError:
+    FRONT_LANG_JSON_DIR = ""
+try:
+    from admin.ui_translation_sync import export_ui_translations_to_json, import_ui_translations_from_json
+except ImportError:
+    export_ui_translations_to_json = None
+    import_ui_translations_from_json = None
 from admin.translations import (
     get_all_translations, get_translation_by_id, update_translation,
     create_translation, delete_translation, format_translation_for_display,
@@ -433,22 +441,25 @@ with tab1:
     st.markdown("---")
     st.markdown("#### 📂 UI 텍스트 ↔ 프론트 JSON 동기화")
     st.caption("translations 컬렉션과 프론트 public/lang/*.json 간 내보내기/가져오기. 배포 전 JSON 내보내기 또는 프론트 수정분 가져오기에 사용.")
-    st.text_input("프론트 lang 폴더 경로", value=FRONT_LANG_JSON_DIR, disabled=True, key="a6_path_display")
+    st.text_input("프론트 lang 폴더 경로", value=FRONT_LANG_JSON_DIR or "(미설정)", disabled=True, key="a6_path_display")
     a6_col1, a6_col2 = st.columns(2)
-    with a6_col1:
-        if st.button("📤 내보내기 (translations → public/lang/*.json)", use_container_width=True, key="a6_export_btn"):
-            ok, msg = export_ui_translations_to_json()
-            if ok:
-                st.success(msg)
-            else:
-                st.error(msg)
-    with a6_col2:
-        if st.button("📥 가져오기 (public/lang/*.json → translations)", use_container_width=True, key="a6_import_btn"):
-            ok, msg = import_ui_translations_from_json()
-            if ok:
-                st.success(msg)
-            else:
-                st.error(msg)
+    if export_ui_translations_to_json and import_ui_translations_from_json:
+        with a6_col1:
+            if st.button("📤 내보내기 (translations → public/lang/*.json)", use_container_width=True, key="a6_export_btn"):
+                ok, msg = export_ui_translations_to_json()
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+        with a6_col2:
+            if st.button("📥 가져오기 (public/lang/*.json → translations)", use_container_width=True, key="a6_import_btn"):
+                ok, msg = import_ui_translations_from_json()
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+    else:
+        st.warning("UI 텍스트 동기화 모듈을 불러올 수 없습니다. (admin.ui_translation_sync 또는 config.FRONT_LANG_JSON_DIR)")
 
 with tab2:
     # AI 도구 콘텐츠 번역 관리

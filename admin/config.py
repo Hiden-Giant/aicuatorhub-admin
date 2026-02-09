@@ -173,7 +173,9 @@ FIREBASE_SERVICE_ACCOUNT_KEY_PATH = os.getenv(
 FIREBASE_SERVICE_ACCOUNT_KEY_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY_JSON")
 
 # A6: UI 텍스트 ↔ 프론트 JSON 동기화용 경로 (프론트 public/lang 폴더)
-FRONT_LANG_JSON_DIR = os.getenv(
-    "FRONT_LANG_JSON_DIR",
-    os.path.join(_base_dir, "ai_site_20_vt", "public", "lang")
-)
+# Streamlit Cloud 등 배포 환경에서 _base_dir 경로가 없을 수 있으므로 예외 시 빈 문자열로 폴백
+try:
+    _front_lang_default = os.path.join(_base_dir, "ai_site_20_vt", "public", "lang")
+except Exception:
+    _front_lang_default = ""
+FRONT_LANG_JSON_DIR = os.getenv("FRONT_LANG_JSON_DIR", _front_lang_default)
