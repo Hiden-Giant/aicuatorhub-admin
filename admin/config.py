@@ -59,6 +59,24 @@ BANNER_SPOTS = {
     }
 }
 
+# 배너 노출 페이지 (프론트 HTML 페이지별 배너 영역 관리)
+# id: 프론트 라우트/파일명과 매칭용 (예: total_page → total_page.html)
+BANNER_PAGES = {
+    "all": {"id": "all", "name": "전체 페이지", "description": "모든 HTML 페이지에 노출"},
+    "total_page": {"id": "total_page", "name": "메인/종합", "description": "total_page.html"},
+    "ai_comb_list": {"id": "ai_comb_list", "name": "AI 콤보 목록", "description": "ai_comb_list.html"},
+    "ai_comb_detail": {"id": "ai_comb_detail", "name": "AI 콤보 상세", "description": "ai_comb_detail.html"},
+    "builder": {"id": "builder", "name": "빌더", "description": "builder.html"},
+    "detail_sp": {"id": "detail_sp", "name": "상세(SP)", "description": "detail_sp.html"},
+    "filter_search": {"id": "filter_search", "name": "필터/검색", "description": "filter_search.html"},
+    "profile": {"id": "profile", "name": "프로필", "description": "profile.html"},
+    "question_recommendation": {"id": "question_recommendation", "name": "질문 추천", "description": "question_recommendation.html"},
+    "service_apply_add": {"id": "service_apply_add", "name": "서비스 신청 추가", "description": "service_apply_add.html"},
+    "service_apply_basic": {"id": "service_apply_basic", "name": "서비스 신청 기본", "description": "service_apply_basic.html"},
+    "service_apply_verified": {"id": "service_apply_verified", "name": "서비스 신청 검증", "description": "service_apply_verified.html"},
+    "service_sales_page": {"id": "service_sales_page", "name": "서비스 판매", "description": "service_sales_page.html"},
+}
+
 # 배너 상태
 BANNER_STATUS = {
     "live": "LIVE (Visible)",

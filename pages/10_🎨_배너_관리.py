@@ -15,7 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from admin.firebase import get_db
 from admin.components import render_page_header
 from admin.config import (
-    COLLECTIONS, BANNER_SPOTS, BANNER_STATUS, COUNTRIES
+    COLLECTIONS, BANNER_SPOTS, BANNER_STATUS, COUNTRIES,
+    BANNER_PAGES, SUPPORTED_LANGUAGES
 )
 from admin.banners import (
     get_all_banners, get_banners_by_spot, get_banner_by_id,
@@ -183,6 +184,8 @@ with col_list:
                     end_date_str = end_date_obj.strftime("~ %Y.%m.%d")
                 except:
                     end_date_str = ""
+            page_id = banner.get("pageId") or "all"
+            page_label = BANNER_PAGES.get(page_id, {}).get("name", page_id)
             
             is_selected = st.session_state.selected_banner_id == banner.get("id")
             
@@ -239,6 +242,7 @@ with col_list:
                                 font-size: 10px;
                                 font-weight: 700;
                             ">{status_badge}</span>
+                            <span style="color: #888;">📄 {page_label}</span>
                             <span>{end_date_str}</span>
                         </div>
                     </div>
@@ -246,10 +250,10 @@ with col_list:
                 """, unsafe_allow_html=True)
             else:
                 if st.button(
-                    f"{idx}. {banner.get('title', '제목 없음')[:20]}...",
+                    f"{idx}. {banner.get('title', '제목 없음')[:20]}... [{page_label}]",
                     key=f"banner_{banner.get('id')}",
                     use_container_width=True,
-                    help=f"{status_badge} {end_date_str}"
+                    help=f"{status_badge} 📄 {page_label} {end_date_str}"
                 ):
                     st.session_state.selected_banner_id = banner.get("id")
                     banner_data = get_banner_by_id(banner.get("id"))
@@ -327,6 +331,25 @@ with col_detail:
                     key="banner_spot_display"
                 )
                 selected_spot_id = banner_data.get("spotId", "web_top")
+            
+            # 노출 페이지 (페이지별 배너 영역 관리)
+            page_names = list(BANNER_PAGES.keys())
+            page_display = [BANNER_PAGES[pid]["name"] for pid in page_names]
+            current_page_id = banner_data.get("pageId", "all")
+            if current_page_id not in BANNER_PAGES:
+                current_page_id = "all"
+            try:
+                page_index = page_names.index(current_page_id)
+            except ValueError:
+                page_index = 0
+            selected_page_name = st.selectbox(
+                "노출 페이지",
+                options=page_display,
+                index=page_index,
+                key="banner_page_id",
+                help="이 배너를 노출할 HTML 페이지. '전체 페이지'면 모든 페이지에 노출됩니다."
+            )
+            selected_page_id = page_names[page_display.index(selected_page_name)]
             
             # 전시 기간
             col_date1, col_date2 = st.columns(2)
@@ -426,7 +449,23 @@ with col_detail:
         with tab3:
             st.markdown("#### 타겟팅 설정")
             
-            # 타겟 국가 선택
+            # 타겟 언어 선택 (요구: 언어 옵션 추가, 프론트에서 언어 우선 적용)
+            st.markdown("##### 타겟 언어")
+            st.caption("배너를 표시할 언어를 선택하세요. (선택하지 않으면 모든 언어에 표시. 언어/국가 둘 다 설정된 경우 프론트에서는 **언어를 우선** 적용합니다.)")
+            selected_langs = banner_data.get("targetLanguages", [])
+            if not isinstance(selected_langs, list):
+                selected_langs = []
+            lang_options = list(SUPPORTED_LANGUAGES.keys())
+            lang_selected = []
+            cols = st.columns(3)
+            for i, lang_code in enumerate(lang_options):
+                with cols[i % 3]:
+                    info = SUPPORTED_LANGUAGES.get(lang_code, {})
+                    label = f"{lang_code} ({info.get('native', info.get('name', lang_code))})"
+                    if st.checkbox(label, value=lang_code in selected_langs, key=f"lang_{lang_code}"):
+                        lang_selected.append(lang_code)
+            all_selected_languages = lang_selected if lang_selected else None
+            
             st.markdown("##### 타겟 국가")
             st.caption("배너를 표시할 국가를 선택하세요. (선택하지 않으면 모든 국가에 표시)")
             
@@ -501,6 +540,7 @@ with col_detail:
                 banner_data_to_save = {
                     "title": banner_title,
                     "spotId": selected_spot_id,
+                    "pageId": selected_page_id,
                     "displayStart": display_start_dt.isoformat(),
                     "displayEnd": display_end_dt.isoformat(),
                     "status": banner_status,
@@ -509,6 +549,7 @@ with col_detail:
                     "webLinkUrl": web_link_url,
                     "mobileImageUrl": mobile_image_url,
                     "mobileLinkUrl": mobile_link_url,
+                    "targetLanguages": all_selected_languages,
                     "targetCountries": all_selected_countries if all_selected_countries else None
                 }
                 
