@@ -1,5 +1,12 @@
 """
 다국어 번역 관련 CRUD 함수
+
+tool_translations 저장 형식 (A1: 프론트 병합 규칙과 일치):
+- 문서 ID: {toolId}_{lang}
+- 필드: toolId, lang, fields (객체)
+- fields 내부 키: shortDescription, description, intro, pros, cons (필수), name (선택)
+- 각 필드 값: { "text": str | list, "status": str } (예: "ai_generated", "edited", "reviewed")
+- 프론트 mergeToolWithTranslation이 읽는 키와 동일하게 저장해야 함.
 """
 import streamlit as st
 from firebase_admin import firestore
@@ -7,6 +14,39 @@ from typing import List, Dict, Optional, Any
 from .firebase import get_db
 from .config import COLLECTIONS, SUPPORTED_LANGUAGES, TRANSLATION_TYPES, ORIGIN_LANGUAGES, REQUIRED_LANGUAGES
 from .utils import convert_firestore_data
+
+# tool_translations fields 키 (프론트 DBManager 병합 규칙과 동일)
+TOOL_TRANSLATION_FIELD_KEYS = ["shortDescription", "description", "intro", "pros", "cons"]
+TOOL_TRANSLATION_FIELD_OPTIONAL_KEYS = ["name"]  # 도구 이름 다국어 시 사용
+
+
+def ensure_tool_translation_fields_shape(fields: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """
+    tool_translations의 fields가 프론트 병합 규칙과 일치하는 형태인지 보장.
+    각 필드: { "text": str | list, "status": str }
+    """
+    if not isinstance(fields, dict):
+        fields = {}
+    result = {}
+    all_keys = TOOL_TRANSLATION_FIELD_KEYS + TOOL_TRANSLATION_FIELD_OPTIONAL_KEYS
+    for key in all_keys:
+        val = fields.get(key)
+        if isinstance(val, dict) and "text" in val:
+            text = val.get("text")
+            status = val.get("status", "ai_generated")
+            result[key] = {"text": text if text is not None else "", "status": status}
+        elif isinstance(val, (str, list)):
+            result[key] = {"text": val, "status": "ai_generated"}
+        else:
+            result[key] = {"text": "", "status": "ai_generated"}
+    # 기존에 있던 다른 키(커스텀 등)는 그대로 유지
+    for k, v in fields.items():
+        if k not in result and isinstance(v, dict):
+            result[k] = {
+                "text": v.get("text", ""),
+                "status": v.get("status", "ai_generated")
+            }
+    return result
 
 
 @st.cache_data(ttl=300)  # 5분 캐시
@@ -330,21 +370,16 @@ def get_tool_translations_by_language(lang: str) -> List[Dict[str, Any]]:
 
 def update_tool_translation(tool_id: str, lang: str, data: Dict[str, Any]) -> bool:
     """
-    AI 도구 번역 정보 업데이트
-    
-    Args:
-        tool_id: 도구 ID
-        lang: 언어 코드
-        data: 업데이트할 데이터
-        
-    Returns:
-        bool: 성공 여부
+    AI 도구 번역 정보 업데이트.
+    data["fields"]가 있으면 프론트 병합 규칙과 동일한 형태로 정규화 후 저장.
     """
     db = get_db()
     if db is None:
         return False
     
     try:
+        if "fields" in data:
+            data = {**data, "fields": ensure_tool_translation_fields_shape(data["fields"])}
         doc_id = f"{tool_id}_{lang}"
         doc_ref = db.collection(COLLECTIONS["TOOL_TRANSLATIONS"]).document(doc_id)
         data["updatedAt"] = firestore.SERVER_TIMESTAMP
@@ -363,21 +398,17 @@ def update_tool_translation(tool_id: str, lang: str, data: Dict[str, Any]) -> bo
 
 def create_tool_translation(tool_id: str, lang: str, data: Dict[str, Any]) -> bool:
     """
-    새 AI 도구 번역 생성
-    
-    Args:
-        tool_id: 도구 ID
-        lang: 언어 코드
-        data: 번역 데이터
-        
-    Returns:
-        bool: 성공 여부
+    새 AI 도구 번역 생성.
+    data["fields"]는 프론트 병합 규칙과 동일한 형태로 저장됨:
+    shortDescription, description, intro, pros, cons (선택: name), 각 { "text": str|list, "status": str }
     """
     db = get_db()
     if db is None:
         return False
     
     try:
+        if "fields" in data:
+            data = {**data, "fields": ensure_tool_translation_fields_shape(data["fields"])}
         doc_id = f"{tool_id}_{lang}"
         doc_ref = db.collection(COLLECTIONS["TOOL_TRANSLATIONS"]).document(doc_id)
         data["toolId"] = tool_id

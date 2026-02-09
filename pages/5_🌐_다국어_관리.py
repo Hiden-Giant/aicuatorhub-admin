@@ -15,16 +15,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from admin.firebase import get_db
 from admin.components import render_page_header, render_language_selector
 from admin.config import (
-    COLLECTIONS, SUPPORTED_LANGUAGES, TRANSLATION_TYPES, 
-    ORIGIN_LANGUAGES, REQUIRED_LANGUAGES
+    COLLECTIONS, SUPPORTED_LANGUAGES, TRANSLATION_TYPES,
+    ORIGIN_LANGUAGES, REQUIRED_LANGUAGES, FRONT_LANG_JSON_DIR
 )
+from admin.ui_translation_sync import export_ui_translations_to_json, import_ui_translations_from_json
 from admin.translations import (
     get_all_translations, get_translation_by_id, update_translation,
     create_translation, delete_translation, format_translation_for_display,
     get_all_tool_translations, get_tool_translation_by_id, get_tool_translations_by_tool_id,
     get_tool_translations_by_language, format_tool_translation_for_display,
-    update_tool_translation, create_tool_translation
+    update_tool_translation, create_tool_translation,
+    TOOL_TRANSLATION_FIELD_KEYS,
+    ensure_tool_translation_fields_shape,
 )
+from admin.tools import get_tool_by_id, get_all_tools
 from admin.utils import convert_firestore_data, format_datetime
 
 # 페이지 설정
@@ -425,6 +429,27 @@ with tab1:
     else:
         st.info("👆 위의 테이블에서 행을 선택하여 번역을 편집하세요.")
 
+    # A6: UI 텍스트 ↔ 프론트 JSON 동기화
+    st.markdown("---")
+    st.markdown("#### 📂 UI 텍스트 ↔ 프론트 JSON 동기화")
+    st.caption("translations 컬렉션과 프론트 public/lang/*.json 간 내보내기/가져오기. 배포 전 JSON 내보내기 또는 프론트 수정분 가져오기에 사용.")
+    st.text_input("프론트 lang 폴더 경로", value=FRONT_LANG_JSON_DIR, disabled=True, key="a6_path_display")
+    a6_col1, a6_col2 = st.columns(2)
+    with a6_col1:
+        if st.button("📤 내보내기 (translations → public/lang/*.json)", use_container_width=True, key="a6_export_btn"):
+            ok, msg = export_ui_translations_to_json()
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+    with a6_col2:
+        if st.button("📥 가져오기 (public/lang/*.json → translations)", use_container_width=True, key="a6_import_btn"):
+            ok, msg = import_ui_translations_from_json()
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+
 with tab2:
     # AI 도구 콘텐츠 번역 관리
     st.markdown("### 🔧 AI 도구 콘텐츠 번역 관리")
@@ -466,6 +491,129 @@ with tab2:
         if tool_search_clicked:
             st.session_state.tool_search_applied = True
             st.rerun()
+
+    st.markdown("---")
+
+    # A2: 한국어에서 다국어 생성 플로우
+    st.markdown("#### 📤 한국어에서 다국어 생성")
+    st.caption("ai-tools에서 한국어 원본을 불러와 대상 언어로 번역 후 tool_translations에 저장합니다.")
+    if "korean_source_tool" not in st.session_state:
+        st.session_state.korean_source_tool = None
+
+    gen_col1, gen_col2, gen_col3 = st.columns([2, 2, 1])
+    with gen_col1:
+        create_tool_id = st.text_input("도구 ID (한국어 원본 불러올 도구)", key="create_tool_id", placeholder="예: tldv, chatpdf")
+    with gen_col2:
+        target_lang_options = [(code, SUPPORTED_LANGUAGES[code]["native"]) for code in SUPPORTED_LANGUAGES if code != "ko"]
+        target_lang = st.selectbox("대상 언어", options=[c for c, _ in target_lang_options], format_func=lambda c: SUPPORTED_LANGUAGES.get(c, {}).get("native", c), key="create_target_lang")
+    with gen_col3:
+        load_origin_clicked = st.button("한국어 원본 불러오기", use_container_width=True, key="load_origin_btn")
+
+    if load_origin_clicked and create_tool_id and create_tool_id.strip():
+        tool_id = create_tool_id.strip()
+        origin = get_tool_by_id(tool_id)
+        if origin:
+            st.session_state.korean_source_tool = {"tool_id": tool_id, "data": origin}
+            st.success(f"✅ 도구 '{origin.get('name', tool_id)}' 한국어 원본을 불러왔습니다.")
+            st.rerun()
+        else:
+            st.error(f"도구를 찾을 수 없습니다: {tool_id}")
+
+    if st.session_state.korean_source_tool:
+        origin_info = st.session_state.korean_source_tool
+        tool_id = origin_info["tool_id"]
+        ko_data = origin_info["data"]
+        st.markdown("**한국어 원본 (참고)**")
+        with st.expander("원본 내용 보기", expanded=True):
+            st.write("**이름:**", ko_data.get("name", "-"))
+            st.write("**설명:**", (ko_data.get("description") or ko_data.get("shortDescription") or "-")[:300] + ("..." if len(str(ko_data.get("description") or ko_data.get("shortDescription") or "")) > 300 else ""))
+            pros = ko_data.get("pros") or []
+            cons = ko_data.get("cons") or []
+            st.write("**장점:**", pros if isinstance(pros, list) else [pros])
+            st.write("**단점:**", cons if isinstance(cons, list) else [cons])
+
+        st.markdown("**대상 언어 번역 입력**")
+        name_text = st.text_input("name (도구 이름 번역, 선택)", key="new_name", placeholder="해당 언어로 표시할 도구 이름")
+        short_desc = st.text_area("shortDescription (요약 설명)", key="new_shortDescription", height=80)
+        desc = st.text_area("description (상세 설명)", key="new_description", height=120)
+        intro_text = st.text_area("intro (소개/긴 설명)", key="new_intro", height=100)
+        pros_text = st.text_area("pros (장점, 한 줄에 하나씩)", key="new_pros", height=100)
+        cons_text = st.text_area("cons (단점, 한 줄에 하나씩)", key="new_cons", height=100)
+
+        if st.button("💾 번역 저장 (tool_translations에 생성)", type="primary", key="create_translation_save_btn"):
+            fields = {
+                "shortDescription": {"text": short_desc or "", "status": "edited"},
+                "description": {"text": desc or "", "status": "edited"},
+                "intro": {"text": intro_text or "", "status": "edited"},
+                "pros": {"text": [s.strip() for s in pros_text.split("\n") if s.strip()] if pros_text else [], "status": "edited"},
+                "cons": {"text": [s.strip() for s in cons_text.split("\n") if s.strip()] if cons_text else [], "status": "edited"},
+            }
+            if name_text and str(name_text).strip():
+                fields["name"] = {"text": str(name_text).strip(), "status": "edited"}
+            fields = ensure_tool_translation_fields_shape(fields)
+            data = {
+                "fields": fields,
+                "docStatus": "edited",
+                "translatedFrom": "ko",
+            }
+            if create_tool_translation(tool_id, target_lang, data):
+                st.success(f"✅ {tool_id}_{target_lang} 번역이 저장되었습니다.")
+                st.session_state.korean_source_tool = None
+                get_all_tool_translations.clear()
+                get_tool_translation_by_id.clear()
+                st.rerun()
+            else:
+                st.error("저장에 실패했습니다.")
+
+        if st.button("❌ 취소", key="create_translation_cancel_btn"):
+            st.session_state.korean_source_tool = None
+            st.rerun()
+
+    st.markdown("---")
+
+    # A3: 새 번역 문서 추가 (빈 문서) — tool_translations에 없는 (toolId, lang) 조합 생성
+    st.markdown("#### 📄 새 번역 문서 추가 (빈 문서)")
+    st.caption("tool_translations에 없는 (도구 ID, 언어) 조합으로 빈 문서를 생성합니다. 생성 후 아래 목록에서 편집하세요.")
+    a3_col1, a3_col2, a3_col3 = st.columns([2, 2, 1])
+    with a3_col1:
+        all_tools_list = get_all_tools()
+        if all_tools_list:
+            a3_tool_options = [(t.get("id") or t.get("name", ""), f"{t.get('id', '')} — {t.get('name', '')}") for t in all_tools_list]
+            a3_tool_id = st.selectbox(
+                "도구 선택",
+                options=[v for v, _ in a3_tool_options],
+                format_func=lambda v: next((l for val, l in a3_tool_options if val == v), v),
+                key="a3_tool_id"
+            )
+        else:
+            a3_tool_id = st.text_input("도구 ID", key="a3_tool_id", placeholder="예: tldv, chatpdf")
+    with a3_col2:
+        a3_lang = st.selectbox(
+            "언어",
+            options=list(SUPPORTED_LANGUAGES.keys()),
+            format_func=lambda c: SUPPORTED_LANGUAGES.get(c, {}).get("native", c),
+            key="a3_lang"
+        )
+    with a3_col3:
+        a3_create_clicked = st.button("빈 문서 생성", use_container_width=True, type="primary", key="a3_create_btn")
+
+    if a3_create_clicked and a3_tool_id and str(a3_tool_id).strip() and a3_lang:
+        a3_tid = str(a3_tool_id).strip()
+        existing = get_tool_translation_by_id(a3_tid, a3_lang)
+        if existing:
+            st.warning(f"이미 존재합니다: **{a3_tid}_{a3_lang}**. 아래 목록에서 편집하세요.")
+        else:
+            empty_fields = ensure_tool_translation_fields_shape({})
+            data = {"fields": empty_fields, "docStatus": "draft", "translatedFrom": ""}
+            if create_tool_translation(a3_tid, a3_lang, data):
+                st.success(f"✅ **{a3_tid}_{a3_lang}** 빈 문서가 생성되었습니다.")
+                get_all_tool_translations.clear()
+                get_tool_translation_by_id.clear()
+                get_tool_translations_by_tool_id.clear()
+                get_tool_translations_by_language.clear()
+                st.rerun()
+            else:
+                st.error("생성에 실패했습니다.")
 
     st.markdown("---")
 
@@ -528,15 +676,24 @@ with tab2:
         table_data = []
         for idx, trans in enumerate(filtered_tool_translations, 1):
             formatted = format_tool_translation_for_display(trans, max_length=30)
+            def _field_text(fields_dict: dict, key: str, default: str = "-"):
+                if not isinstance(fields_dict, dict):
+                    return default
+                fd = fields_dict.get(key, {})
+                if not isinstance(fd, dict):
+                    return default
+                t = fd.get("text", default)
+                return t if isinstance(t, str) else (", ".join(str(x) for x in t) if isinstance(t, list) else default)
             row = {
                 "No.": idx,
                 "도구 ID": formatted.get("toolId", "-"),
                 "언어": formatted.get("lang", "-"),
                 "상태": formatted.get("docStatus", "-"),
-                "shortDescription": formatted.get("fields", {}).get("shortDescription", {}).get("text", "-") if isinstance(formatted.get("fields"), dict) else "-",
-                "description": formatted.get("fields", {}).get("description", {}).get("text", "-") if isinstance(formatted.get("fields"), dict) else "-",
-                "pros": formatted.get("fields", {}).get("pros", {}).get("text", "-") if isinstance(formatted.get("fields"), dict) else "-",
-                "cons": formatted.get("fields", {}).get("cons", {}).get("text", "-") if isinstance(formatted.get("fields"), dict) else "-",
+                "name": _field_text(formatted.get("fields") or {}, "name", "-"),
+                "shortDescription": _field_text(formatted.get("fields") or {}, "shortDescription", "-"),
+                "description": _field_text(formatted.get("fields") or {}, "description", "-"),
+                "pros": _field_text(formatted.get("fields") or {}, "pros", "-"),
+                "cons": _field_text(formatted.get("fields") or {}, "cons", "-"),
                 "수정 날짜": format_datetime(trans.get("updatedAt"), "%Y-%m-%d") if trans.get("updatedAt") else "-",
                 "_id": trans.get("id", ""),
                 "_toolId": trans.get("toolId", ""),
@@ -564,6 +721,7 @@ with tab2:
         gb_tool.configure_column("도구 ID", width=120)
         gb_tool.configure_column("언어", width=80)
         gb_tool.configure_column("상태", width=100)
+        gb_tool.configure_column("name", width=140)
         gb_tool.configure_column("shortDescription", width=200)
         gb_tool.configure_column("description", width=200)
         gb_tool.configure_column("pros", width=150)
@@ -633,8 +791,8 @@ with tab2:
         
         st.info(f"도구 ID: **{tool_id}** | 언어: **{tool_lang}**")
         
-        # fields 편집
-        fields = tool_trans.get("fields", {})
+        # fields 편집 (A4: name 포함 — ensure_tool_translation_fields_shape로 표준 키 모두 표시)
+        fields = ensure_tool_translation_fields_shape(tool_trans.get("fields", {}))
         edited_fields = {}
         
         for field_name, field_data in fields.items():

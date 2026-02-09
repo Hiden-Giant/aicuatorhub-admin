@@ -92,6 +92,7 @@ COUNTRIES = {
 }
 
 # 지원 언어 목록 (aicuratorhub.com 기준)
+# A5: 프론트(translate.js supportedLanguages, constants.js SUPPORTED_LANGUAGES)와 키 목록 동일 유지
 SUPPORTED_LANGUAGES = {
     "ko": {"name": "한국어", "native": "한국어"},
     "en": {"name": "English", "native": "English"},
@@ -170,3 +171,9 @@ FIREBASE_SERVICE_ACCOUNT_KEY_PATH = os.getenv(
     _default_key_path
 )
 FIREBASE_SERVICE_ACCOUNT_KEY_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY_JSON")
+
+# A6: UI 텍스트 ↔ 프론트 JSON 동기화용 경로 (프론트 public/lang 폴더)
+FRONT_LANG_JSON_DIR = os.getenv(
+    "FRONT_LANG_JSON_DIR",
+    os.path.join(_base_dir, "ai_site_20_vt", "public", "lang")
+)
