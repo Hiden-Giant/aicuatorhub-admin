@@ -5,6 +5,12 @@
 		},
 		{
 			"path": "../ai_site_20_vt"
+		},
+		{
+			"path": "../../bigbluewave_api"
+		},
+		{
+			"path": "../../bigbluewave_translation"
 		}
 	],
 	"settings": {}

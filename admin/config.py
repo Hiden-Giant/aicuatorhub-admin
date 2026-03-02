@@ -10,6 +10,9 @@ COLLECTIONS = {
     "RECIPES": "my_recipe",  # 사용자 개인 레시피
     "PUBLIC_RECIPES": "public_recipe_collection",  # 공개 레시피 (AI 레시피 관리에서 사용)
     "CATEGORIES": "categories",
+    # Albatross: 인기 질문 (원본/번역)
+    "POPULAR_QUESTIONS": "popular_questions",
+    "POPULAR_QUESTION_TRANSLATIONS": "popular_question_translations",
     "TRANSLATIONS": "translations",  # UI 텍스트 번역 (정적 파일 기반)
     "TOOL_TRANSLATIONS": "tool_translations",  # AI 도구 콘텐츠 번역 (DB 기반)
     "APPLICATIONS": "applications",
@@ -124,7 +127,10 @@ SUPPORTED_LANGUAGES = {
     "id": {"name": "Bahasa Indonesia", "native": "Bahasa Indonesia"},
     "fr": {"name": "Français", "native": "Français"},
     "hi": {"name": "हिन्दी", "native": "हिन्दी"},
-    "ms": {"name": "Bahasa Melayu", "native": "Bahasa Melayu"}
+    "ms": {"name": "Bahasa Melayu", "native": "Bahasa Melayu"},
+    "it": {"name": "Italiano", "native": "Italiano"},
+    "de": {"name": "Deutsch", "native": "Deutsch"},
+    "tr": {"name": "Türkçe", "native": "Türkçe"}
 }
 
 # 필수 지원 언어 (오리진 언어 제외) - HTML mockup 기준

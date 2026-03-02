@@ -1,0 +1,180 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 사용자 개별 데이터 접근 (예: /users/{userId})
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // favorites 서브컬렉션 접근 허용
+      match /favorites/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // favorited_recipe 서브컬렉션 접근 허용
+      match /favorited_recipe/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // reviews 서브컬렉션 접근 허용
+      match /reviews/{reviewId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // my_recipe 서브컬렉션 접근 허용
+      match /my_recipe/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // recipe_reviews 서브컬렉션 접근 허용
+      match /recipe_reviews/{reviewId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // public_recipe_collection/{docId}/recipe_reviews/{reviewId}
+    match /public_recipe_collection/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+
+      match /recipe_reviews/{reviewId} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+    }
+
+    // ai-tools 문서는 누구나 읽기 가능, admin만 쓰기 가능
+    match /ai-tools/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+
+      // reviews 서브컬렉션은 로그인한 사용자는 쓰기 가능
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+
+      // summary 서브컬렉션
+      match /summary/{summaryId} {
+        allow read: if true;
+        allow write: if request.auth != null && request.auth.token.admin == true;
+      }
+
+      // pricing 서브컬렉션
+      match /pricing/{pricingId} {
+        allow read: if true;
+        allow write: if request.auth != null && request.auth.token.admin == true;
+      }
+
+      // overview 서브컬렉션
+      match /overview/{overviewId} {
+        allow read: if true;
+        allow write: if request.auth != null && request.auth.token.admin == true;
+      }
+    }
+
+    // AI 도구 다국어 번역 (프론트 표시용) - 누구나 읽기, admin만 쓰기
+    match /tool_translations/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+
+    // Albatross: 인기 질문(프론트 표시용) - 누구나 읽기, admin만 쓰기
+    match /popular_questions/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+
+    // Albatross: 인기 질문 번역(프론트 표시용) - 누구나 읽기, admin만 쓰기
+    match /popular_question_translations/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+
+    // Albatross: 검색 로그 (고객 검색/인기 질문 클릭 기록) - create는 누구나, 읽기/수정/삭제는 admin만
+    match /albatross_search_logs/{docId} {
+      allow read: if request.auth != null && request.auth.token.admin == true;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+
+    // 레시피 콘텐츠 번역 캐시 (Lazy Pre-translation) - 누구나 읽기/쓰기
+    match /recipe_translations/{docId} {
+      allow read, write: if true;
+    }
+
+    // 배너 (어드민에서 설정, 프론트 노출) - 누구나 읽기, admin만 쓰기
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+
+    // Vite 리팩토링 추가 규칙들
+
+    // 회원 정보 - 자신의 데이터만 접근 가능 (기존 members 컬렉션)
+    match /members/{memberId} {
+      allow read, write: if request.auth != null && request.auth.uid == memberId;
+    }
+
+    // 즐겨찾기 컬렉션 - 자신의 데이터만 접근 가능 (기존 favorites 컬렉션)
+    match /favorites/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /favorite_sites/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // AI 레시피 관련 컬렉션들
+    match /ai_recipes/{recipeId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+    }
+
+    // AI 조합 레시피 컬렉션
+    match /ai_combinations/{combinationId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+    }
+
+    // 전역 리뷰 컬렉션 (기존 규칙과 호환)
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+
+    // 사용자 활동 로그 (선택적)
+    match /user_activity/{activityId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+
+    // 서비스 신청 컬렉션들 - 인증된 사용자만 접근
+    match /serviceApplications/{document} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /verifiedApplications/{document} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /advertisingApplications/{document} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 테스트 컬렉션 - 개발용 (모든 권한 허용)
+    match /test/{document} {
+      allow read, write: if true;
+    }
+  }
+}
