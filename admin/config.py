@@ -19,7 +19,8 @@ COLLECTIONS = {
     "PAID_SERVICES": "paid-services",
     "TOOL_REGISTRATIONS": "applications/tool-registrations",
     "PAID_SERVICE_REQUESTS": "applications/paid-service-requests",
-    "BANNERS": "banners"  # 배너 관리
+    "BANNERS": "banners",  # 배너 관리
+    "BANNER_SLOT_SETTINGS": "banner_slot_settings",  # 슬롯별 디스플레이 레이아웃
 }
 
 # 배너 위치 정의
@@ -79,6 +80,34 @@ BANNER_PAGES = {
     "service_apply_basic": {"id": "service_apply_basic", "name": "서비스 신청 기본", "description": "service_apply_basic.html"},
     "service_apply_verified": {"id": "service_apply_verified", "name": "서비스 신청 검증", "description": "service_apply_verified.html"},
     "service_sales_page": {"id": "service_sales_page", "name": "서비스 판매", "description": "service_sales_page.html"},
+}
+
+# 배너 디스플레이 레이아웃 (Popular AI Tools 상단 등 그리드 배치)
+BANNER_DISPLAY_LAYOUTS = {
+    "single": {
+        "id": "single",
+        "name": "1줄 1개 — 긴 배너",
+        "maxBanners": 1,
+        "webSize": "1400 × 200px (비율 7:1)",
+        "mobileSize": "750 × 150px (비율 5:1)",
+        "description": "전폭 가로형 히어로 배너 1장",
+    },
+    "double": {
+        "id": "double",
+        "name": "1줄 2개 — 직사각형",
+        "maxBanners": 2,
+        "webSize": "690 × 350px (비율 2:1) × 2장",
+        "mobileSize": "360 × 200px (비율 16:9) × 2장",
+        "description": "좌우 2분할 직사각형 배너",
+    },
+    "quad": {
+        "id": "quad",
+        "name": "1줄 4개 — 포스터형",
+        "maxBanners": 4,
+        "webSize": "335 × 445px (비율 3:4) × 4장",
+        "mobileSize": "170 × 230px (비율 3:4) × 4장",
+        "description": "포스터 스타일 4열 그리드 (모바일 2×2)",
+    },
 }
 
 # 배너 상태

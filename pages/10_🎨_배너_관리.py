@@ -5,6 +5,7 @@ HTML mockup을 기반으로 구현
 import streamlit as st
 import sys
 import os
+import html
 import pandas as pd
 from datetime import datetime, date, timedelta
 from typing import List, Dict, Any
@@ -16,12 +17,13 @@ from admin.firebase import get_db
 from admin.components import render_page_header
 from admin.config import (
     COLLECTIONS, BANNER_SPOTS, BANNER_STATUS, COUNTRIES,
-    BANNER_PAGES, SUPPORTED_LANGUAGES
+    BANNER_PAGES, SUPPORTED_LANGUAGES, BANNER_DISPLAY_LAYOUTS
 )
 from admin.banners import (
     get_all_banners, get_banners_by_spot, get_banner_by_id,
     update_banner, create_banner, delete_banner, update_banner_priority,
-    get_banner_status
+    get_banner_status, get_banner_slot_setting, upsert_banner_slot_setting,
+    get_all_banner_slot_settings,
 )
 from admin.utils import convert_firestore_data, format_datetime
 
@@ -61,6 +63,42 @@ def _start_new_banner():
     st.session_state.confirm_delete_banner = False
     _clear_banner_form_widget_state()
 
+
+def _render_image_preview(url: str, max_width: int = 300, caption: str = "미리보기"):
+    """직접 접근 가능한 이미지 URL 미리보기 (st.image 대신 HTML img 사용)"""
+    url = (url or "").strip()
+    if not url:
+        return
+    if not url.startswith(("http://", "https://")):
+        st.warning("URL은 `http://` 또는 `https://` 로 시작해야 합니다.")
+        return
+    safe_url = html.escape(url, quote=True)
+    st.markdown(
+        f'<p style="font-size:12px;color:#666;margin:8px 0 4px;">{html.escape(caption)}</p>'
+        f'<img src="{safe_url}" alt="banner preview" '
+        f'style="max-width:{max_width}px;width:100%;border-radius:8px;border:1px solid #ddd;display:block;" '
+        f'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'" />'
+        f'<p style="display:none;color:#c0392b;font-size:12px;margin-top:6px;">'
+        f'⚠️ 이미지를 불러올 수 없습니다. JPG/PNG/WebP <strong>직접 링크</strong>인지 확인하세요.<br>'
+        f'Google Drive 공유 링크·로그인 필요 URL은 사용할 수 없습니다.</p>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_layout_size_guide(layout_id: str, is_mobile_spot: bool):
+    """선택된 디스플레이 레이아웃별 권장 이미지 사이즈 안내"""
+    info = BANNER_DISPLAY_LAYOUTS.get(layout_id, BANNER_DISPLAY_LAYOUTS["single"])
+    device_label = "모바일" if is_mobile_spot else "웹(PC)"
+    size = info["mobileSize"] if is_mobile_spot else info["webSize"]
+    st.info(
+        f"**{info['name']}** · {device_label} 권장: **{size}**  \n"
+        f"최대 **{info['maxBanners']}개** 배너 (우선순위 순) · {info['description']}"
+    )
+    st.caption(
+        "✅ 사용 가능: Firebase Storage (`?alt=media&token=...`), Imgur, CDN 직접 URL  \n"
+        "❌ 사용 불가: Google Drive 공유 링크, HTML 페이지 URL, 로그인 필요 URL"
+    )
+
 # 페이지 설정
 st.set_page_config(
     page_title="배너 관리 - Aicuatorhub Admin",
@@ -83,6 +121,8 @@ if 'selected_banner_data' not in st.session_state:
     st.session_state.selected_banner_data = None
 if 'is_new_banner' not in st.session_state:
     st.session_state.is_new_banner = False
+if 'layout_page_id' not in st.session_state:
+    st.session_state.layout_page_id = "index"
 
 # 페이지 헤더
 render_page_header("🎨 배너 관리", "웹사이트 및 모바일 배너를 관리할 수 있습니다.")
@@ -187,6 +227,56 @@ with col_list:
         </div>
     </div>
     """, unsafe_allow_html=True)
+    
+    # --- 디스플레이 레이아웃 설정 (슬롯 + 페이지별) ---
+    st.markdown("#### 📐 디스플레이 레이아웃")
+    layout_page_names = list(BANNER_PAGES.keys())
+    layout_page_labels = [BANNER_PAGES[p]["name"] for p in layout_page_names]
+    try:
+        layout_page_index = layout_page_names.index(st.session_state.layout_page_id)
+    except ValueError:
+        layout_page_index = layout_page_names.index("index") if "index" in layout_page_names else 0
+
+    selected_layout_page_label = st.selectbox(
+        "레이아웃 적용 페이지",
+        layout_page_labels,
+        index=layout_page_index,
+        key="layout_page_select",
+        help="선택한 페이지·슬롯 조합에 레이아웃이 적용됩니다.",
+    )
+    st.session_state.layout_page_id = layout_page_names[layout_page_labels.index(selected_layout_page_label)]
+
+    current_slot_setting = get_banner_slot_setting(
+        st.session_state.selected_spot_id,
+        st.session_state.layout_page_id,
+    )
+    layout_keys = list(BANNER_DISPLAY_LAYOUTS.keys())
+    current_layout = current_slot_setting.get("displayLayout", "single")
+    if current_layout not in layout_keys:
+        current_layout = "single"
+
+    selected_layout = st.radio(
+        "배너 표시 방식",
+        layout_keys,
+        index=layout_keys.index(current_layout),
+        format_func=lambda x: BANNER_DISPLAY_LAYOUTS[x]["name"],
+        key="slot_display_layout",
+        horizontal=True,
+    )
+
+    is_mobile_spot = st.session_state.selected_spot_id.startswith("mobile_")
+    _render_layout_size_guide(selected_layout, is_mobile_spot)
+
+    if st.button("💾 레이아웃 저장", key="save_slot_layout_btn", use_container_width=True):
+        if upsert_banner_slot_setting(
+            st.session_state.selected_spot_id,
+            st.session_state.layout_page_id,
+            selected_layout,
+        ):
+            st.success("디스플레이 레이아웃이 저장되었습니다!")
+            st.rerun()
+
+    st.markdown("---")
     
     # 새 배너 추가 버튼
     st.button(
@@ -454,6 +544,13 @@ with col_detail:
         
         with tab2:
             st.markdown("#### 콘텐츠 및 링크")
+
+            # 현재 슬롯·페이지 레이아웃 기준 사이즈 가이드
+            guide_spot = selected_spot_id if is_new else banner_data.get("spotId", st.session_state.selected_spot_id)
+            guide_page = selected_page_id
+            guide_setting = get_banner_slot_setting(guide_spot, guide_page)
+            guide_layout = guide_setting.get("displayLayout", "single")
+            _render_layout_size_guide(guide_layout, guide_spot.startswith("mobile_"))
             
             # 웹용 이미지
             st.markdown("##### 웹용 배너")
@@ -461,7 +558,7 @@ with col_detail:
                 "웹 이미지 URL",
                 value=banner_data.get("webImageUrl", ""),
                 key="web_image_url",
-                placeholder="https://example.com/banner-web.jpg"
+                placeholder="https://firebasestorage.googleapis.com/.../banner.jpg?alt=media&token=..."
             )
             web_link_url = st.text_input(
                 "웹 링크 URL",
@@ -470,11 +567,7 @@ with col_detail:
                 placeholder="https://example.com/page"
             )
             
-            if web_image_url:
-                try:
-                    st.image(web_image_url, width=300, caption="웹 배너 미리보기")
-                except:
-                    st.warning("이미지를 불러올 수 없습니다.")
+            _render_image_preview(web_image_url, max_width=400, caption="웹 배너 미리보기")
             
             st.markdown("---")
             
@@ -484,7 +577,7 @@ with col_detail:
                 "모바일 이미지 URL",
                 value=banner_data.get("mobileImageUrl", ""),
                 key="mobile_image_url",
-                placeholder="https://example.com/banner-mobile.jpg"
+                placeholder="https://firebasestorage.googleapis.com/.../banner-mobile.jpg?alt=media&token=..."
             )
             mobile_link_url = st.text_input(
                 "모바일 링크 URL",
@@ -493,11 +586,7 @@ with col_detail:
                 placeholder="https://example.com/page"
             )
             
-            if mobile_image_url:
-                try:
-                    st.image(mobile_image_url, width=200, caption="모바일 배너 미리보기")
-                except:
-                    st.warning("이미지를 불러올 수 없습니다.")
+            _render_image_preview(mobile_image_url, max_width=280, caption="모바일 배너 미리보기")
         
         with tab3:
             st.markdown("#### 타겟팅 설정")
@@ -657,5 +746,7 @@ with st.sidebar:
         get_all_banners.clear()
         get_banners_by_spot.clear()
         get_banner_by_id.clear()
+        get_all_banner_slot_settings.clear()
+        get_banner_slot_setting.clear()
         st.success("캐시가 초기화되었습니다!")
         st.rerun()

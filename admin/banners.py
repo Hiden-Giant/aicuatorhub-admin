@@ -187,6 +187,70 @@ def update_banner_priority(banner_id: str, new_priority: int) -> bool:
     return update_banner(banner_id, {"priority": new_priority})
 
 
+def get_slot_setting_id(spot_id: str, page_id: str) -> str:
+    """슬롯+페이지 조합 문서 ID"""
+    return f"{spot_id}__{page_id}"
+
+
+@st.cache_data(ttl=60)
+def get_all_banner_slot_settings() -> Dict[str, Dict[str, Any]]:
+    """모든 슬롯 디스플레이 설정 조회 (key: spotId__pageId)"""
+    db = get_db()
+    if db is None:
+        return {}
+    try:
+        docs = db.collection(COLLECTIONS["BANNER_SLOT_SETTINGS"]).stream()
+        settings = {}
+        for doc in docs:
+            data = convert_firestore_data(doc.to_dict() or {})
+            data["id"] = doc.id
+            settings[doc.id] = data
+        return settings
+    except Exception as e:
+        st.error(f"슬롯 설정 조회 실패: {e}")
+        return {}
+
+
+@st.cache_data(ttl=60)
+def get_banner_slot_setting(spot_id: str, page_id: str) -> Dict[str, Any]:
+    """특정 슬롯+페이지 디스플레이 설정 조회"""
+    db = get_db()
+    if db is None:
+        return {}
+    doc_id = get_slot_setting_id(spot_id, page_id)
+    try:
+        doc = db.collection(COLLECTIONS["BANNER_SLOT_SETTINGS"]).document(doc_id).get()
+        if doc.exists:
+            data = convert_firestore_data(doc.to_dict() or {})
+            data["id"] = doc.id
+            return data
+        return {"displayLayout": "single", "spotId": spot_id, "pageId": page_id}
+    except Exception as e:
+        st.error(f"슬롯 설정 조회 실패: {e}")
+        return {"displayLayout": "single", "spotId": spot_id, "pageId": page_id}
+
+
+def upsert_banner_slot_setting(spot_id: str, page_id: str, display_layout: str) -> bool:
+    """슬롯+페이지 디스플레이 레이아웃 저장"""
+    db = get_db()
+    if db is None:
+        return False
+    doc_id = get_slot_setting_id(spot_id, page_id)
+    try:
+        db.collection(COLLECTIONS["BANNER_SLOT_SETTINGS"]).document(doc_id).set({
+            "spotId": spot_id,
+            "pageId": page_id,
+            "displayLayout": display_layout,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        }, merge=True)
+        get_all_banner_slot_settings.clear()
+        get_banner_slot_setting.clear()
+        return True
+    except Exception as e:
+        st.error(f"슬롯 설정 저장 실패: {e}")
+        return False
+
+
 def get_banner_status(banner: Dict[str, Any]) -> str:
     """
     배너의 현재 상태 계산 (LIVE, SCHEDULED, OFF)
