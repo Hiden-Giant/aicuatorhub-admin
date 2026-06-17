@@ -25,6 +25,42 @@ from admin.banners import (
 )
 from admin.utils import convert_firestore_data, format_datetime
 
+
+def _parse_banner_datetime(value, default=None):
+    """Firestore/ISO 문자열·datetime 객체를 폼용 naive datetime으로 변환"""
+    if default is None:
+        default = datetime.now()
+    if not value:
+        return default
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    if isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return dt.replace(tzinfo=None) if dt.tzinfo else dt
+        except ValueError:
+            return default
+    return default
+
+
+def _clear_banner_form_widget_state():
+    """배너 폼 위젯 세션 키 초기화 (모드 전환 시 충돌 방지)"""
+    prefixes = ("banner_", "lang_", "country_", "web_", "mobile_")
+    reserved = {"is_new_banner", "selected_banner_id", "selected_banner_data", "selected_spot_id", "confirm_delete_banner"}
+    for key in list(st.session_state.keys()):
+        if key in reserved:
+            continue
+        if any(key.startswith(p) for p in prefixes):
+            del st.session_state[key]
+
+
+def _start_new_banner():
+    st.session_state.is_new_banner = True
+    st.session_state.selected_banner_id = None
+    st.session_state.selected_banner_data = None
+    st.session_state.confirm_delete_banner = False
+    _clear_banner_form_widget_state()
+
 # 페이지 설정
 st.set_page_config(
     page_title="배너 관리 - Aicuatorhub Admin",
@@ -153,11 +189,13 @@ with col_list:
     """, unsafe_allow_html=True)
     
     # 새 배너 추가 버튼
-    if st.button("➕ 새 배너 추가", use_container_width=True, type="primary"):
-        st.session_state.is_new_banner = True
-        st.session_state.selected_banner_id = None
-        st.session_state.selected_banner_data = None
-        st.rerun()
+    st.button(
+        "➕ 새 배너 추가",
+        key="banner_add_new_btn",
+        use_container_width=True,
+        type="primary",
+        on_click=_start_new_banner,
+    )
     
     st.caption("💡 배너를 클릭하여 상세 정보를 편집하세요.")
     
@@ -260,6 +298,8 @@ with col_list:
                     if banner_data:
                         st.session_state.selected_banner_data = banner_data
                     st.session_state.is_new_banner = False
+                    st.session_state.confirm_delete_banner = False
+                    _clear_banner_form_widget_state()
                     st.rerun()
     else:
         st.info("이 위치에 등록된 배너가 없습니다.")
@@ -312,13 +352,21 @@ with col_detail:
                 placeholder="배너 제목을 입력하세요"
             )
             
-            # 배너 위치 (신규일 때만 선택 가능)
+            # 배너 위치 (신규일 때만 선택 가능, 좌측 선택 위치를 기본값으로)
             if is_new:
                 spot_options = {f"{info['icon']} {info['name']}": spot_id 
                                for spot_id, info in BANNER_SPOTS.items()}
+                spot_labels = list(spot_options.keys())
+                default_spot_id = st.session_state.selected_spot_id
+                default_spot_label = next(
+                    (label for label, sid in spot_options.items() if sid == default_spot_id),
+                    spot_labels[0],
+                )
+                default_spot_index = spot_labels.index(default_spot_label) if default_spot_label in spot_labels else 0
                 selected_spot_name = st.selectbox(
                     "배너 위치",
-                    list(spot_options.keys()),
+                    spot_labels,
+                    index=default_spot_index,
                     key="banner_spot_select"
                 )
                 selected_spot_id = spot_options[selected_spot_name]
@@ -335,7 +383,7 @@ with col_detail:
             # 노출 페이지 (페이지별 배너 영역 관리)
             page_names = list(BANNER_PAGES.keys())
             page_display = [BANNER_PAGES[pid]["name"] for pid in page_names]
-            current_page_id = banner_data.get("pageId", "all")
+            current_page_id = banner_data.get("pageId", "index" if is_new else "all")
             if current_page_id not in BANNER_PAGES:
                 current_page_id = "all"
             try:
@@ -353,28 +401,33 @@ with col_detail:
             
             # 전시 기간
             col_date1, col_date2 = st.columns(2)
+            start_dt = _parse_banner_datetime(banner_data.get("displayStart"))
+            end_dt = _parse_banner_datetime(
+                banner_data.get("displayEnd"),
+                default=datetime.now() + timedelta(days=30),
+            )
             
             with col_date1:
                 display_start = st.date_input(
                     "전시 시작일",
-                    value=datetime.fromisoformat(banner_data.get("displayStart", datetime.now().isoformat()).replace("Z", "+00:00")).date() if banner_data.get("displayStart") else date.today(),
+                    value=start_dt.date(),
                     key="banner_start_date"
                 )
                 display_start_time = st.time_input(
                     "시작 시간",
-                    value=datetime.fromisoformat(banner_data.get("displayStart", datetime.now().isoformat()).replace("Z", "+00:00")).time() if banner_data.get("displayStart") else datetime.now().time(),
+                    value=start_dt.time(),
                     key="banner_start_time"
                 )
             
             with col_date2:
                 display_end = st.date_input(
                     "전시 종료일",
-                    value=datetime.fromisoformat(banner_data.get("displayEnd", (datetime.now() + timedelta(days=30)).isoformat()).replace("Z", "+00:00")).date() if banner_data.get("displayEnd") else date.today() + timedelta(days=30),
+                    value=end_dt.date(),
                     key="banner_end_date"
                 )
                 display_end_time = st.time_input(
                     "종료 시간",
-                    value=datetime.fromisoformat(banner_data.get("displayEnd", (datetime.now() + timedelta(days=30)).isoformat()).replace("Z", "+00:00")).time() if banner_data.get("displayEnd") else datetime.now().time(),
+                    value=end_dt.time(),
                     key="banner_end_time"
                 )
             
@@ -525,10 +578,12 @@ with col_detail:
                     st.rerun()
         
         with col_btn2:
-            if st.button("❌ 취소", use_container_width=True):
+            if st.button("❌ 취소", use_container_width=True, key="banner_cancel_btn"):
                 st.session_state.is_new_banner = False
                 st.session_state.selected_banner_id = None
                 st.session_state.selected_banner_data = None
+                st.session_state.confirm_delete_banner = False
+                _clear_banner_form_widget_state()
                 st.rerun()
         
         with col_btn3:

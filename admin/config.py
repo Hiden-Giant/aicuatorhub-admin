@@ -66,6 +66,7 @@ BANNER_SPOTS = {
 # id: 프론트 라우트/파일명과 매칭용 (예: total_page → total_page.html)
 BANNER_PAGES = {
     "all": {"id": "all", "name": "전체 페이지", "description": "모든 HTML 페이지에 노출"},
+    "index": {"id": "index", "name": "메인 홈 (index.html)", "description": "index.html — Popular AI Tools 위 배너 영역"},
     "total_page": {"id": "total_page", "name": "메인/종합", "description": "total_page.html"},
     "ai_comb_list": {"id": "ai_comb_list", "name": "AI 콤보 목록", "description": "ai_comb_list.html"},
     "ai_comb_detail": {"id": "ai_comb_detail", "name": "AI 콤보 상세", "description": "ai_comb_detail.html"},
