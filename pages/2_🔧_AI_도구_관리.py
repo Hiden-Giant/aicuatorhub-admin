@@ -151,6 +151,7 @@ if submenu == "도구 조회":
             if search_lower in t.get("name", "").lower()
             or search_lower in t.get("description", "").lower()
             or search_lower in t.get("websiteUrl", "").lower()
+            or search_lower in t.get("affiliateUrl", "").lower()
         ]
     
     if primary_category_filter != "전체":
@@ -205,7 +206,7 @@ if submenu == "도구 조회":
             "imageUrl", "logoFileName", "logoUrl", "popularityScore", "pricing",
             "primaryCategory", "primaryCategoryEn", "primaryCategoryKr", "pros",
             "rating", "reviewCount", "source", "sourceUrl", "status",
-            "subCategoryEn", "subCategoryKr", "tagsEn", "tagsKr", "verified", "websiteUrl"
+            "subCategoryEn", "subCategoryKr", "tagsEn", "tagsKr", "verified", "websiteUrl", "affiliateUrl"
         ]
         
         rows = []
@@ -254,6 +255,8 @@ if submenu == "도구 조회":
             gb.configure_column('company', width=200, minWidth=150)
         if 'websiteUrl' in df.columns:
             gb.configure_column('websiteUrl', width=300, minWidth=250)
+        if 'affiliateUrl' in df.columns:
+            gb.configure_column('affiliateUrl', width=300, minWidth=250)
         if 'status' in df.columns:
             gb.configure_column('status', width=120, minWidth=100)
         if 'rating' in df.columns:
@@ -377,7 +380,8 @@ if submenu == "도구 조회":
                     st.text_input("도구 이름", value=tool.get('name', ''), disabled=True, key=f"detail_name_{_tk}")
                     st.text_input("회사명", value=tool.get('company', ''), disabled=True, key=f"detail_company_{_tk}")
                     st.text_area("설명", value=tool.get('description', ''), disabled=True, height=100, key=f"detail_description_{_tk}")
-                    st.text_input("웹사이트 URL", value=tool.get('websiteUrl', ''), disabled=True, key=f"detail_url_{_tk}")
+                    st.text_input("웹사이트 URL (기본)", value=tool.get('websiteUrl', ''), disabled=True, key=f"detail_url_{_tk}")
+                    st.text_input("제휴 URL", value=tool.get('affiliateUrl', ''), disabled=True, key=f"detail_affiliate_url_{_tk}")
                 with col_info2:
                     logo_url = tool.get('logoUrl')
                     image_url = tool.get('imageUrl')
@@ -441,7 +445,7 @@ if submenu == "도구 조회":
             col_action1, col_action2, col_action3 = st.columns([1, 1, 2])
             with col_action1:
                 if st.button("✏️ 수정하기", use_container_width=True, type="primary"):
-                    st.session_state.current_submenu = "도구 수정"
+                    st.session_state.ai_tools_submenu = "도구 수정"
                     st.rerun()
             with col_action2:
                 if st.button("🗑️ 삭제하기", use_container_width=True):
@@ -467,7 +471,8 @@ elif submenu == "도구 등록":
         with col1:
             tool_name = st.text_input("도구 이름 *", key="new_name")
             company = st.text_input("회사명", key="new_company")
-            website_url = st.text_input("웹사이트 URL", key="new_url")
+            website_url = st.text_input("웹사이트 URL (기본)", key="new_url", help="공식 사이트 주소")
+            affiliate_url = st.text_input("제휴 URL", key="new_affiliate_url", help="제휴·추적 코드가 포함된 링크 (있으면 방문 시 이 URL 우선 사용)")
             description = st.text_area("설명 *", key="new_description", height=100)
             primary_category = st.text_input("주 카테고리", key="new_primary_category")
             primary_category_kr = st.text_input("주 카테고리 (한글)", key="new_primary_category_kr")
@@ -502,6 +507,7 @@ elif submenu == "도구 등록":
                         "name": tool_name,
                         "company": company if company else None,
                         "websiteUrl": website_url if website_url else None,
+                        "affiliateUrl": affiliate_url if affiliate_url else None,
                         "description": description,
                         "primaryCategory": primary_category if primary_category else None,
                         "primaryCategoryKr": primary_category_kr if primary_category_kr else None,
@@ -545,7 +551,8 @@ elif submenu == "도구 수정":
                 with col1:
                     tool_name = st.text_input("도구 이름 *", value=tool.get("name", ""), key="edit_name")
                     company = st.text_input("회사명", value=tool.get("company", ""), key="edit_company")
-                    website_url = st.text_input("웹사이트 URL", value=tool.get("websiteUrl", ""), key="edit_url")
+                    website_url = st.text_input("웹사이트 URL (기본)", value=tool.get("websiteUrl", ""), key="edit_url", help="공식 사이트 주소")
+                    affiliate_url = st.text_input("제휴 URL", value=tool.get("affiliateUrl", ""), key="edit_affiliate_url", help="제휴·추적 코드가 포함된 링크 (있으면 방문 시 이 URL 우선 사용)")
                     description = st.text_area("설명 *", value=tool.get("description", ""), key="edit_description", height=100)
                     primary_category = st.text_input("주 카테고리", value=tool.get("primaryCategory", ""), key="edit_primary_category")
                     primary_category_kr = st.text_input("주 카테고리 (한글)", value=tool.get("primaryCategoryKr", ""), key="edit_primary_category_kr")
@@ -579,6 +586,7 @@ elif submenu == "도구 수정":
                             "name": tool_name,
                             "company": company if company else None,
                             "websiteUrl": website_url if website_url else None,
+                            "affiliateUrl": affiliate_url if affiliate_url else None,
                             "description": description,
                             "primaryCategory": primary_category if primary_category else None,
                             "primaryCategoryKr": primary_category_kr if primary_category_kr else None,
