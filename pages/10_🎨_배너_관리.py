@@ -395,6 +395,10 @@ with col_spots:
                 st.session_state.selected_banner_data = None
                 st.rerun()
 
+    active_spot = BANNER_SPOTS.get(st.session_state.selected_spot_id, {})
+    if active_spot.get("description"):
+        st.caption(f"📍 **{active_spot['name']}** — {active_spot['description']}")
+
 # 2. 중앙: Rotation List (배너 목록)
 with col_list:
     st.markdown("""
@@ -472,6 +476,14 @@ with col_list:
             st.session_state.layout_page_id,
             selected_layout,
         ):
+            # 배너 문서에도 displayLayout 동기화 (slot_settings 미배포 시 프론트 폴백용)
+            page_banners = _filter_banners_for_page(
+                get_banners_by_spot(st.session_state.selected_spot_id),
+                st.session_state.layout_page_id,
+            )
+            for b in page_banners:
+                if b.get("id"):
+                    update_banner(b["id"], {"displayLayout": selected_layout})
             st.success("디스플레이 레이아웃이 저장되었습니다!")
             st.rerun()
 
@@ -759,6 +771,10 @@ with col_detail:
                     value=end_dt.time(),
                     key="banner_end_time"
                 )
+
+            end_preview = datetime.combine(display_end, display_end_time)
+            if end_preview < datetime.now():
+                st.error("⚠️ 전시 종료일이 이미 지났습니다. LIVE여도 사이트에 노출되지 않습니다. 종료일을 미래로 변경하세요.")
             
             # 상태 및 우선순위
             col_status1, col_status2 = st.columns(2)
@@ -960,6 +976,7 @@ with col_detail:
                     "displayStart": display_start_dt.isoformat(),
                     "displayEnd": display_end_dt.isoformat(),
                     "status": banner_status,
+                    "displayLayout": form_layout,
                     "targetLanguages": all_selected_languages,
                     "targetCountries": all_selected_countries if all_selected_countries else None,
                 }

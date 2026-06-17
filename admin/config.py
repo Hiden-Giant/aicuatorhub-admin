@@ -29,19 +29,19 @@ BANNER_SPOTS = {
         "id": "web_top",
         "name": "웹 상단",
         "icon": "🖥️",
-        "description": "웹사이트 페이지 최상단"
+        "description": "헤더 바로 아래 (index: Hero 위 / total_page: 본문 위)"
     },
     "web_middle": {
         "id": "web_middle",
         "name": "웹 중단",
         "icon": "🖥️",
-        "description": "웹사이트 페이지 중단"
+        "description": "본문 중간 (index: Hero 아래·Popular AI Tools 위 / total_page: 검색 아래)"
     },
     "web_bottom": {
         "id": "web_bottom",
         "name": "웹 하단",
         "icon": "🖥️",
-        "description": "웹사이트 페이지 하단"
+        "description": "푸터 바로 위 (페이지 최하단 콘텐츠 아래)"
     },
     "mobile_top": {
         "id": "mobile_top",
@@ -67,7 +67,7 @@ BANNER_SPOTS = {
 # id: 프론트 라우트/파일명과 매칭용 (예: total_page → total_page.html)
 BANNER_PAGES = {
     "all": {"id": "all", "name": "전체 페이지", "description": "모든 HTML 페이지에 노출"},
-    "index": {"id": "index", "name": "메인 홈 (index.html)", "description": "index.html — Popular AI Tools 위 배너 영역"},
+    "index": {"id": "index", "name": "메인 홈 (index.html)", "description": "index.html — 상단(헤더 아래)·중단(Popular AI Tools 위)·하단(푸터 위)"},
     "total_page": {"id": "total_page", "name": "메인/종합", "description": "total_page.html"},
     "ai_comb_list": {"id": "ai_comb_list", "name": "AI 콤보 목록", "description": "ai_comb_list.html"},
     "ai_comb_detail": {"id": "ai_comb_detail", "name": "AI 콤보 상세", "description": "ai_comb_detail.html"},
