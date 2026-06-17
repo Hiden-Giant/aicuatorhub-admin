@@ -698,7 +698,7 @@ with col_detail:
             # 노출 페이지 (페이지별 배너 영역 관리)
             page_names = list(BANNER_PAGES.keys())
             page_display = [BANNER_PAGES[pid]["name"] for pid in page_names]
-            current_page_id = banner_data.get("pageId", "index" if is_new else "all")
+            current_page_id = banner_data.get("pageId", st.session_state.layout_page_id if is_new else "all")
             if current_page_id not in BANNER_PAGES:
                 current_page_id = "all"
             try:
