@@ -85,14 +85,92 @@ def _render_image_preview(url: str, max_width: int = 300, caption: str = "미리
     )
 
 
+def _filter_banners_for_page(banners: List[Dict[str, Any]], page_id: str) -> List[Dict[str, Any]]:
+    """특정 페이지(또는 전체)에 노출되는 배너만 필터"""
+    return [
+        b for b in banners
+        if not b.get("pageId") or b.get("pageId") == "all" or b.get("pageId") == page_id
+    ]
+
+
+def _count_live_banners(banners: List[Dict[str, Any]], page_id: str) -> int:
+    """페이지 기준 LIVE 배너 수"""
+    return sum(
+        1 for b in _filter_banners_for_page(banners, page_id)
+        if get_banner_status(b) == "live"
+    )
+
+
+def _suggest_next_priority(banners: List[Dict[str, Any]], page_id: str) -> int:
+    """같은 슬롯·페이지에 등록된 배너 기준 다음 우선순위"""
+    filtered = _filter_banners_for_page(banners, page_id)
+    if not filtered:
+        return 1
+    return max(int(b.get("priority", 1)) for b in filtered) + 1
+
+
+def _render_registration_status(spot_banners: List[Dict[str, Any]], page_id: str, layout_id: str):
+    """레이아웃별 배너 등록 현황 (1배너=1이미지 안내 포함)"""
+    info = BANNER_DISPLAY_LAYOUTS.get(layout_id, BANNER_DISPLAY_LAYOUTS["single"])
+    max_needed = info["maxBanners"]
+    page_banners = _filter_banners_for_page(spot_banners, page_id)
+    live_count = sum(1 for b in page_banners if get_banner_status(b) == "live")
+    total_count = len(page_banners)
+    page_label = BANNER_PAGES.get(page_id, {}).get("name", page_id)
+
+    st.markdown(
+        f"**등록 현황** · `{page_label}` · LIVE **{live_count}** / 필요 **{max_needed}**개 "
+        f"(전체 등록 {total_count}개)"
+    )
+
+    if max_needed > 1:
+        st.warning(
+            f"**{info['name']}** 은 이미지 **{max_needed}장**이 필요합니다.  \n"
+            f"아래 **「➕ 새 배너 추가」** 버튼을 **{max_needed}번** 눌러 배너를 **각각** 등록하세요.  \n"
+            f"한 배너 = 이미지 URL 1개 · 우선순위 **1→{max_needed}** 순으로 좌→우 배치됩니다."
+        )
+    else:
+        st.caption("이 레이아웃은 배너 **1개**만 등록하면 됩니다.")
+
+    if live_count < max_needed:
+        remaining = max_needed - live_count
+        st.error(f"⚠️ LIVE 배너가 **{remaining}개** 더 필요합니다. 「새 배너 추가」로 나머지를 등록하세요.")
+    elif live_count >= max_needed:
+        st.success(f"✅ LIVE 배너 {live_count}개 — 레이아웃 노출 준비 완료")
+
+
+def _render_thumbnail_html(banner: Dict[str, Any], size: int = 60) -> str:
+    """Rotation List용 썸네일 HTML"""
+    img_url = (banner.get("webImageUrl") or banner.get("mobileImageUrl") or "").strip()
+    if img_url and img_url.startswith(("http://", "https://")):
+        safe_url = html.escape(img_url, quote=True)
+        return (
+            f'<img src="{safe_url}" style="width:{size}px;height:{size - 22}px;object-fit:cover;'
+            f'border-radius:4px;display:block;" '
+            f'onerror="this.outerHTML=\'<div style=&quot;width:{size}px;height:{size - 22}px;'
+            f'background:#eee;border-radius:4px;display:flex;align-items:center;justify-content:center;'
+            f'font-size:10px;color:#999;&quot;>없음</div>\'" />'
+        )
+    return (
+        f'<div style="width:{size}px;height:{size - 22}px;background:#eee;border-radius:4px;'
+        f'display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;">없음</div>'
+    )
+
+
 def _render_layout_size_guide(layout_id: str, is_mobile_spot: bool):
     """선택된 디스플레이 레이아웃별 권장 이미지 사이즈 안내"""
     info = BANNER_DISPLAY_LAYOUTS.get(layout_id, BANNER_DISPLAY_LAYOUTS["single"])
     device_label = "모바일" if is_mobile_spot else "웹(PC)"
     size = info["mobileSize"] if is_mobile_spot else info["webSize"]
+    multi_hint = ""
+    if info["maxBanners"] > 1:
+        multi_hint = (
+            f"  \n📌 **배너 {info['maxBanners']}개를 각각 등록**해야 합니다 "
+            f"(「새 배너 추가」×{info['maxBanners']}, 우선순위 1~{info['maxBanners']})."
+        )
     st.info(
         f"**{info['name']}** · {device_label} 권장: **{size}**  \n"
-        f"최대 **{info['maxBanners']}개** 배너 (우선순위 순) · {info['description']}"
+        f"슬롯당 최대 **{info['maxBanners']}개** · {info['description']}{multi_hint}"
     )
     st.caption(
         "✅ 사용 가능: Firebase Storage (`?alt=media&token=...`), Imgur, CDN 직접 URL  \n"
@@ -267,6 +345,14 @@ with col_list:
     is_mobile_spot = st.session_state.selected_spot_id.startswith("mobile_")
     _render_layout_size_guide(selected_layout, is_mobile_spot)
 
+    # 선택된 위치의 배너 목록 (등록 현황 계산용)
+    spot_banners_all = get_banners_by_spot(st.session_state.selected_spot_id)
+    _render_registration_status(
+        spot_banners_all,
+        st.session_state.layout_page_id,
+        selected_layout,
+    )
+
     if st.button("💾 레이아웃 저장", key="save_slot_layout_btn", use_container_width=True):
         if upsert_banner_slot_setting(
             st.session_state.selected_spot_id,
@@ -286,11 +372,27 @@ with col_list:
         type="primary",
         on_click=_start_new_banner,
     )
-    
-    st.caption("💡 배너를 클릭하여 상세 정보를 편집하세요.")
-    
+
+    max_for_layout = BANNER_DISPLAY_LAYOUTS.get(selected_layout, {}).get("maxBanners", 1)
+    if max_for_layout > 1:
+        st.caption(
+            f"💡 **1줄 {max_for_layout}개** 레이아웃: 위 버튼을 **{max_for_layout}번** 눌러 "
+            f"배너를 **개별 등록**하세요. (한 폼 = 이미지 1장)"
+        )
+    else:
+        st.caption("💡 배너 1개를 등록합니다. 목록에서 클릭하면 편집할 수 있습니다.")
+
+    filter_page_only = st.checkbox(
+        f"「{BANNER_PAGES.get(st.session_state.layout_page_id, {}).get('name', st.session_state.layout_page_id)}」 배너만 보기",
+        value=True,
+        key="filter_rotation_by_page",
+    )
+
     # 선택된 위치의 배너 목록
-    spot_banners = get_banners_by_spot(st.session_state.selected_spot_id)
+    spot_banners = spot_banners_all
+    if filter_page_only:
+        spot_banners = _filter_banners_for_page(spot_banners, st.session_state.layout_page_id)
+        spot_banners = sorted(spot_banners, key=lambda x: x.get("priority", 999))
     
     if spot_banners:
         for idx, banner in enumerate(spot_banners, 1):
@@ -316,6 +418,8 @@ with col_list:
             page_label = BANNER_PAGES.get(page_id, {}).get("name", page_id)
             
             is_selected = st.session_state.selected_banner_id == banner.get("id")
+            priority = banner.get("priority", idx)
+            thumb_html = _render_thumbnail_html(banner)
             
             if is_selected:
                 st.markdown(f"""
@@ -336,18 +440,8 @@ with col_list:
                         color: #4a90e2;
                         width: 20px;
                         text-align: center;
-                    ">{idx}</div>
-                    <div style="
-                        width: 60px;
-                        height: 38px;
-                        background-color: #eee;
-                        border-radius: 4px;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 11px;
-                        color: #999;
-                    ">이미지</div>
+                    ">{priority}</div>
+                    <div style="flex-shrink:0;">{thumb_html}</div>
                     <div style="flex: 1; min-width: 0;">
                         <div style="
                             font-weight: 600;
@@ -377,11 +471,15 @@ with col_list:
                 </div>
                 """, unsafe_allow_html=True)
             else:
+                btn_label = (
+                    f"#{priority} {banner.get('title', '제목 없음')[:18]} "
+                    f"[{page_label}] {status_badge}"
+                )
                 if st.button(
-                    f"{idx}. {banner.get('title', '제목 없음')[:20]}... [{page_label}]",
+                    btn_label,
                     key=f"banner_{banner.get('id')}",
                     use_container_width=True,
-                    help=f"{status_badge} 📄 {page_label} {end_date_str}"
+                    help=f"우선순위 {priority} · {status_badge} · 📄 {page_label} {end_date_str}",
                 ):
                     st.session_state.selected_banner_id = banner.get("id")
                     banner_data = get_banner_by_id(banner.get("id"))
@@ -392,7 +490,15 @@ with col_list:
                     _clear_banner_form_widget_state()
                     st.rerun()
     else:
-        st.info("이 위치에 등록된 배너가 없습니다.")
+        page_label = BANNER_PAGES.get(st.session_state.layout_page_id, {}).get("name", st.session_state.layout_page_id)
+        st.info(
+            f"「{page_label}」에 등록된 배너가 없습니다.  \n"
+            f"**➕ 새 배너 추가** 로 배너를 등록하세요."
+            + (
+                f" (1줄 {max_for_layout}개 레이아웃이면 **{max_for_layout}번** 등록 필요)"
+                if max_for_layout > 1 else ""
+            )
+        )
 
 # 3. 우측: Detail Settings (상세 설정)
 with col_detail:
@@ -534,16 +640,39 @@ with col_detail:
                 )
             
             with col_status2:
-                banner_priority = st.number_input(
-                    "우선순위",
-                    min_value=1,
-                    value=int(banner_data.get("priority", 1)),
-                    key="banner_priority",
-                    help="숫자가 작을수록 먼저 표시됩니다"
+                # 신규 배너: 같은 슬롯·페이지 기준 다음 우선순위 자동 제안
+                priority_spot_id = selected_spot_id if is_new else banner_data.get("spotId", st.session_state.selected_spot_id)
+                spot_for_priority = get_banners_by_spot(priority_spot_id)
+                suggested_priority = _suggest_next_priority(spot_for_priority, selected_page_id)
+                default_priority = (
+                    suggested_priority if is_new
+                    else int(banner_data.get("priority", suggested_priority))
                 )
+                form_layout = get_banner_slot_setting(priority_spot_id, selected_page_id).get("displayLayout", "single")
+                form_max = BANNER_DISPLAY_LAYOUTS.get(form_layout, BANNER_DISPLAY_LAYOUTS["single"])["maxBanners"]
+                banner_priority = st.number_input(
+                    "우선순위 (노출 순서)",
+                    min_value=1,
+                    value=default_priority,
+                    key="banner_priority",
+                    help=(
+                        f"숫자가 작을수록 왼쪽(먼저) 표시. "
+                        f"현재 페이지 레이아웃({BANNER_DISPLAY_LAYOUTS.get(form_layout, {}).get('name', form_layout)})은 "
+                        f"배너 {form_max}개 — 우선순위 1~{form_max}를 각 배너에 부여하세요."
+                    )
+                )
+                if is_new and form_max > 1:
+                    st.caption(
+                        f"💡 **{default_priority}번째** 배너 등록 중 · "
+                        f"「새 배너 추가」를 **{form_max}번** 반복해 이미지를 **각각** 등록하세요."
+                    )
         
         with tab2:
             st.markdown("#### 콘텐츠 및 링크")
+            st.caption(
+                "**이 배너 1개 = 그리드 슬롯 1칸** · 웹/모바일 이미지 URL을 각각 1개씩 입력합니다. "
+                "1줄 4개 레이아웃이면 이 작업을 **4번** 반복해 배너를 **개별 등록**하세요."
+            )
 
             # 현재 슬롯·페이지 레이아웃 기준 사이즈 가이드
             guide_spot = selected_spot_id if is_new else banner_data.get("spotId", st.session_state.selected_spot_id)
