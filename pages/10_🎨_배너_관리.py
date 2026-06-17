@@ -45,14 +45,32 @@ def _parse_banner_datetime(value, default=None):
     return default
 
 
+# 신규/편집 폼 위젯 키만 초기화 (버튼·레이아웃 위젯은 제외)
+_BANNER_FORM_WIDGET_KEYS = (
+    "banner_title",
+    "banner_spot_select",
+    "banner_spot_display",
+    "banner_page_id",
+    "banner_start_date",
+    "banner_start_time",
+    "banner_end_date",
+    "banner_end_time",
+    "banner_status",
+    "banner_priority",
+    "web_image_url",
+    "web_link_url",
+    "mobile_image_url",
+    "mobile_link_url",
+)
+
+
 def _clear_banner_form_widget_state():
-    """배너 폼 위젯 세션 키 초기화 (모드 전환 시 충돌 방지)"""
-    prefixes = ("banner_", "lang_", "country_", "web_", "mobile_")
-    reserved = {"is_new_banner", "selected_banner_id", "selected_banner_data", "selected_spot_id", "confirm_delete_banner"}
+    """배너 폼 입력 위젯만 세션 키 초기화 (버튼 key 삭제 방지)"""
+    for key in _BANNER_FORM_WIDGET_KEYS:
+        if key in st.session_state:
+            del st.session_state[key]
     for key in list(st.session_state.keys()):
-        if key in reserved:
-            continue
-        if any(key.startswith(p) for p in prefixes):
+        if key.startswith("lang_") or key.startswith("country_"):
             del st.session_state[key]
 
 
@@ -62,6 +80,12 @@ def _start_new_banner():
     st.session_state.selected_banner_data = None
     st.session_state.confirm_delete_banner = False
     _clear_banner_form_widget_state()
+
+
+def _handle_add_new_banner_click():
+    """새 배너 추가 버튼 — on_click + rerun 으로 우측 폼 즉시 표시"""
+    _start_new_banner()
+    st.rerun()
 
 
 def _render_image_preview(url: str, max_width: int = 300, caption: str = "미리보기"):
@@ -370,11 +394,26 @@ with col_list:
         key="banner_add_new_btn",
         use_container_width=True,
         type="primary",
-        on_click=_start_new_banner,
+        on_click=_handle_add_new_banner_click,
     )
 
     max_for_layout = BANNER_DISPLAY_LAYOUTS.get(selected_layout, {}).get("maxBanners", 1)
-    if max_for_layout > 1:
+    next_priority = _suggest_next_priority(
+        _filter_banners_for_page(spot_banners_all, st.session_state.layout_page_id),
+        st.session_state.layout_page_id,
+    )
+
+    if st.session_state.is_new_banner:
+        st.success(
+            f"📝 **신규 배너 등록 중** — 우선순위 **#{next_priority}** · "
+            f"**우측 Detail Settings** 패널에서 입력 후 **💾 저장**하세요."
+        )
+        if max_for_layout > 1:
+            st.info(
+                f"1줄 {max_for_layout}개 레이아웃: 저장 후 **➕ 새 배너 추가**를 "
+                f"**{max_for_layout - 1}번** 더 눌러 나머지 배너를 등록하세요."
+            )
+    elif max_for_layout > 1:
         st.caption(
             f"💡 **1줄 {max_for_layout}개** 레이아웃: 위 버튼을 **{max_for_layout}번** 눌러 "
             f"배너를 **개별 등록**하세요. (한 폼 = 이미지 1장)"
@@ -526,6 +565,9 @@ with col_detail:
         </div>
     </div>
     """.format(banner_id=st.session_state.selected_banner_id or "신규"), unsafe_allow_html=True)
+    
+    if st.session_state.is_new_banner:
+        st.success("📝 **신규 배너 등록 모드** — 아래 탭에서 정보 입력 후 **💾 저장**")
     
     if st.session_state.is_new_banner or st.session_state.selected_banner_data:
         # 탭 메뉴
@@ -843,7 +885,10 @@ with col_detail:
                         st.session_state.selected_banner_data = get_banner_by_id(st.session_state.selected_banner_id)
                         st.rerun()
     else:
-        st.info("👆 좌측에서 배너 위치를 선택하고, 중앙에서 배너를 선택하거나 새 배너를 추가하세요.")
+        st.info(
+            "👆 **➕ 새 배너 추가** 를 클릭하면 이 패널에 등록 폼이 나타납니다.  \n"
+            "1줄 4개 레이아웃은 버튼을 **4번** 눌러 배너를 **각각** 등록하세요."
+        )
 
 # 사이드바 통계
 with st.sidebar:
