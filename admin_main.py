@@ -44,20 +44,10 @@ if db is None:
 
 st.session_state.db = db
 
-# 사이드바에 브랜딩 표시
+# 사이드바에 브랜딩 표시 (스타일: .streamlit/custom.css)
 st.sidebar.markdown("""
-<div style="
-    padding: 1.5rem 0;
-    border-bottom: 1px solid #e2e8f0;
-    margin-bottom: 1rem;
-">
-    <h2 style="
-        color: #1e293b;
-        font-size: 1.5rem;
-        font-weight: 700;
-        margin: 0;
-        text-align: center;
-    ">Aicuatorhub Admin</h2>
+<div class="admin-sidebar-branding">
+    <h2 class="admin-sidebar-branding-title">Aicuatorhub Admin</h2>
 </div>
 """, unsafe_allow_html=True)
 
@@ -74,15 +64,10 @@ st.info(f"""
 {t("welcome_message", current_lang)}
 """)
 
-# 하단 정보
+# 하단 정보 (스타일: .streamlit/custom.css)
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
-<div style="
-    padding: 1rem;
-    font-size: 0.85rem;
-    color: #64748b;
-    text-align: center;
-">
+<div class="admin-sidebar-footer">
     <p>Version 1.0.0</p>
     <p>© 2025 Aicuatorhub</p>
 </div>

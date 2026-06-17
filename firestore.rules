@@ -98,9 +98,10 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // 레시피 콘텐츠 번역 캐시 (Lazy Pre-translation) - 누구나 읽기/쓰기
+    // 레시피 콘텐츠 번역 캐시 (Lazy Pre-translation) - 읽기는 공개, 쓰기는 인증 사용자만
     match /recipe_translations/{docId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if request.auth != null;
     }
 
     // 배너 (어드민에서 설정, 프론트 노출) - 누구나 읽기, admin만 쓰기
@@ -172,9 +173,9 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
-    // 테스트 컬렉션 - 개발용 (모든 권한 허용)
+    // 테스트 컬렉션 - 운영에서는 비활성화 (개발 시에만 true로 변경)
     match /test/{document} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

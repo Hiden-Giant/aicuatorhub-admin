@@ -1,9 +1,31 @@
-/* Aicuatorhub Admin 커스텀 스타일 */
+/* Aicuatorhub Admin 커스텀 스타일 (23번: admin_main.py 인라인 스타일 이전) */
 
 /* 사이드바 스타일 */
 [data-testid="stSidebar"] {
     background-color: #FFFFFF;
     border-right: 1px solid #e2e8f0;
+}
+
+/* 사이드바 브랜딩 영역 (admin_main.py) */
+.admin-sidebar-branding {
+    padding: 1.5rem 0;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 1rem;
+}
+.admin-sidebar-branding-title {
+    color: #1e293b;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+    text-align: center;
+}
+
+/* 사이드바 하단 정보 (admin_main.py) */
+.admin-sidebar-footer {
+    padding: 1rem;
+    font-size: 0.85rem;
+    color: #64748b;
+    text-align: center;
 }
 
 /* 메인 콘텐츠 영역 */
