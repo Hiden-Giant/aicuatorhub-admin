@@ -102,6 +102,83 @@ def _slot_has_content(slot: Dict[str, Any]) -> bool:
     ))
 
 
+def _save_single_slot(
+    spot_id: str,
+    page_id: str,
+    priority: int,
+    form_max: int,
+    common_data: Dict[str, Any],
+    slot_content: Dict[str, Any],
+) -> tuple:
+    """단일 슬롯(우선순위) 배너 등록/수정"""
+    import uuid
+    existing_all = _filter_banners_for_page(get_banners_by_spot(spot_id), page_id)
+    existing_banner = next(
+        (b for b in existing_all if int(b.get("priority", -1)) == priority),
+        None,
+    )
+    if existing_banner is None and slot_content.get("id"):
+        existing_banner = get_banner_by_id(slot_content["id"])
+
+    base_title = (common_data.get("title") or "배너").strip()
+    slot_payload = {
+        **common_data,
+        "spotId": spot_id,
+        "pageId": page_id,
+        "priority": priority,
+        "title": base_title if form_max == 1 else f"{base_title} #{priority}",
+        "webImageUrl": (slot_content.get("webImageUrl") or "").strip(),
+        "webLinkUrl": (slot_content.get("webLinkUrl") or "").strip(),
+        "mobileImageUrl": (slot_content.get("mobileImageUrl") or "").strip(),
+        "mobileLinkUrl": (slot_content.get("mobileLinkUrl") or "").strip(),
+    }
+
+    if not _slot_has_content(slot_payload):
+        return False, None, "웹 또는 모바일 이미지 URL을 입력하세요."
+
+    if existing_banner and existing_banner.get("id"):
+        ok = update_banner(existing_banner["id"], slot_payload)
+        return ok, existing_banner["id"], None
+
+    new_id = f"banner_{uuid.uuid4().hex[:8]}"
+    ok = create_banner(new_id, slot_payload)
+    return ok, new_id if ok else None, None
+
+
+def _delete_single_slot(spot_id: str, page_id: str, priority: int) -> bool:
+    """단일 슬롯 배너 삭제"""
+    existing_all = _filter_banners_for_page(get_banners_by_spot(spot_id), page_id)
+    existing_banner = next(
+        (b for b in existing_all if int(b.get("priority", -1)) == priority),
+        None,
+    )
+    if existing_banner and existing_banner.get("id"):
+        return delete_banner(existing_banner["id"])
+    return False
+
+
+def _save_group_common(
+    spot_id: str,
+    page_id: str,
+    form_max: int,
+    common_data: Dict[str, Any],
+) -> int:
+    """등록된 배너 그룹에 일정·상태·타겟팅 공통 적용"""
+    group = _get_banner_group(spot_id, page_id, form_max)
+    base_title = (common_data.get("title") or "배너").strip()
+    updated = 0
+    for b in group:
+        if not b.get("id"):
+            continue
+        payload = dict(common_data)
+        if form_max > 1:
+            priority = int(b.get("priority", 1))
+            payload["title"] = f"{base_title} #{priority}"
+        if update_banner(b["id"], payload):
+            updated += 1
+    return updated
+
+
 def _save_banner_group(
     spot_id: str,
     page_id: str,
@@ -223,33 +300,91 @@ def _suggest_next_priority(banners: List[Dict[str, Any]], page_id: str) -> int:
     return max(int(b.get("priority", 1)) for b in filtered) + 1
 
 
+def _read_targeting_from_session(
+    default_langs: Any,
+    default_countries: Any,
+) -> tuple:
+    """세션 상태에서 타겟 언어·국가 읽기 (탭 순서와 무관하게 저장 시 사용)"""
+    if not isinstance(default_langs, list):
+        default_langs = []
+    if not isinstance(default_countries, list):
+        default_countries = []
+
+    lang_selected = []
+    for lang_code in SUPPORTED_LANGUAGES.keys():
+        key = f"lang_{lang_code}"
+        if key in st.session_state:
+            if st.session_state[key]:
+                lang_selected.append(lang_code)
+        elif lang_code in default_langs:
+            lang_selected.append(lang_code)
+
+    country_selected = []
+    for country_code in COUNTRIES.keys():
+        key = f"country_{country_code}"
+        if key in st.session_state:
+            if st.session_state[key]:
+                country_selected.append(country_code)
+        elif country_code in default_countries:
+            country_selected.append(country_code)
+
+    return (
+        lang_selected if lang_selected else None,
+        country_selected if country_selected else None,
+    )
+
+
+def _build_common_data_from_session(
+    form_layout: str,
+    default_priority: int = 1,
+) -> Dict[str, Any]:
+    """Basic & Schedule 위젯 값을 common_data dict로 변환"""
+    display_start = st.session_state.get("banner_start_date")
+    display_start_time = st.session_state.get("banner_start_time")
+    display_end = st.session_state.get("banner_end_date")
+    display_end_time = st.session_state.get("banner_end_time")
+    display_start_dt = datetime.combine(display_start, display_start_time)
+    display_end_dt = datetime.combine(display_end, display_end_time)
+
+    return {
+        "title": st.session_state.get("banner_title", ""),
+        "displayStart": display_start_dt.isoformat(),
+        "displayEnd": display_end_dt.isoformat(),
+        "status": st.session_state.get("banner_status", "live"),
+        "displayLayout": form_layout,
+        "priority": int(st.session_state.get("banner_priority", default_priority)),
+    }
+
+
 def _render_registration_status(spot_banners: List[Dict[str, Any]], page_id: str, layout_id: str):
-    """레이아웃별 배너 등록 현황 (1배너=1이미지 안내 포함)"""
+    """레이아웃별 배너 등록 현황 (레이아웃 = 최대 노출 수)"""
     info = BANNER_DISPLAY_LAYOUTS.get(layout_id, BANNER_DISPLAY_LAYOUTS["single"])
-    max_needed = info["maxBanners"]
+    max_slots = info["maxBanners"]
     page_banners = _filter_banners_for_page(spot_banners, page_id)
     live_count = sum(1 for b in page_banners if get_banner_status(b) == "live")
     total_count = len(page_banners)
     page_label = BANNER_PAGES.get(page_id, {}).get("name", page_id)
 
     st.markdown(
-        f"**등록 현황** · `{page_label}` · LIVE **{live_count}** / 필요 **{max_needed}**개 "
-        f"(전체 등록 {total_count}개)"
+        f"**등록 현황** · `{page_label}` · LIVE **{live_count}**개 "
+        f"(등록 {total_count}개 · **최대 {max_slots}**개까지 노출)"
     )
 
-    if max_needed > 1:
+    if max_slots > 1:
         st.info(
-            f"**{info['name']}** — Content & Link 탭에서 이미지 URL **{max_needed}개**를 한 번에 입력·저장합니다.  \n"
-            f"일정·상태·타겟팅은 **{max_needed}개 배너 공통** · 좌→우 우선순위 **1→{max_needed}** 자동 적용."
+            f"**{info['name']}** — 슬롯 **최대 {max_slots}칸**. "
+            f"등록한 수만 노출됩니다 (예: 3개만 등록 시 3개 표시).  \n"
+            f"우측 Content & Link에서 **칸별 💾 등록/저장 · 🗑️ 삭제**로 관리하세요."
         )
     else:
-        st.caption("이 레이아웃은 이미지 URL **1개**만 입력하면 됩니다.")
+        st.caption("이 레이아웃은 배너 **1개**까지 노출됩니다.")
 
-    if live_count < max_needed:
-        remaining = max_needed - live_count
-        st.error(f"⚠️ LIVE 배너가 **{remaining}개** 더 필요합니다. 「배너 등록/편집」에서 URL을 입력하세요.")
-    elif live_count >= max_needed:
-        st.success(f"✅ LIVE 배너 {live_count}개 — 레이아웃 노출 준비 완료")
+    if live_count > 0:
+        st.success(f"✅ LIVE {live_count}개 — 사이트에 노출 가능")
+    elif total_count > 0:
+        st.warning("등록된 배너가 있지만 LIVE가 없습니다. 상태·전시 기간을 확인하세요.")
+    else:
+        st.caption("등록된 배너가 없습니다. 우측에서 칸별로 등록하세요.")
 
 
 def _render_thumbnail_html(banner: Dict[str, Any], size: int = 60) -> str:
@@ -278,8 +413,7 @@ def _render_layout_size_guide(layout_id: str, is_mobile_spot: bool):
     multi_hint = ""
     if info["maxBanners"] > 1:
         multi_hint = (
-            f"  \n📌 Content & Link 탭에서 **이미지 URL {info['maxBanners']}개**를 한 폼에 입력합니다 "
-            f"(일정·타겟팅 공통)."
+            f"  \n📌 우측 Content & Link에서 **칸별 등록/저장·삭제** (최대 {info['maxBanners']}칸, 등록 수만 노출)."
         )
     st.info(
         f"**{info['name']}** · {device_label} 권장: **{size}**  \n"
@@ -488,30 +622,12 @@ with col_list:
             st.rerun()
 
     st.markdown("---")
-    
-    # 배너 등록/편집 버튼
-    st.button(
-        "➕ 배너 등록/편집",
-        key="banner_add_new_btn",
-        use_container_width=True,
-        type="primary",
-        on_click=_handle_add_new_banner_click,
+    st.caption(
+        "우측 **Detail Settings**에서 칸별 등록·삭제. "
+        "레이아웃은 **최대 노출 수**입니다 (등록한 수만 표시)."
     )
 
     max_for_layout = BANNER_DISPLAY_LAYOUTS.get(selected_layout, {}).get("maxBanners", 1)
-
-    if st.session_state.is_new_banner:
-        st.success(
-            f"📝 **배너 등록/편집 중** — 우측 **Content & Link** 탭에 "
-            f"이미지 URL **{max_for_layout}개** 영역이 표시됩니다. **💾 저장**으로 일괄 등록."
-        )
-    elif max_for_layout > 1:
-        st.caption(
-            f"💡 **1줄 {max_for_layout}개** 레이아웃: 「배너 등록/편집」 클릭 후 "
-            f"Content & Link에서 URL **{max_for_layout}개**를 한 번에 입력하세요."
-        )
-    else:
-        st.caption("💡 「배너 등록/편집」으로 배너를 추가하거나 목록에서 선택해 편집하세요.")
 
     filter_page_only = st.checkbox(
         f"「{BANNER_PAGES.get(st.session_state.layout_page_id, {}).get('name', st.session_state.layout_page_id)}」 배너만 보기",
@@ -624,9 +740,7 @@ with col_list:
         page_label = BANNER_PAGES.get(st.session_state.layout_page_id, {}).get("name", st.session_state.layout_page_id)
         st.info(
             f"「{page_label}」에 등록된 배너가 없습니다.  \n"
-            f"**➕ 배너 등록/편집** → Content & Link에서 URL **{max_for_layout}개** 입력 후 저장."
-            if max_for_layout > 1 else
-            f"「{page_label}」에 등록된 배너가 없습니다. **➕ 배너 등록/편집**으로 등록하세요."
+            f"우측 Content & Link에서 칸별 **💾 등록/저장**을 사용하세요."
         )
 
 # 3. 우측: Detail Settings (상세 설정)
@@ -654,381 +768,304 @@ with col_detail:
             </span>
         </div>
     </div>
-    """.format(banner_id=st.session_state.selected_banner_id or "신규"), unsafe_allow_html=True)
-    
-    if st.session_state.is_new_banner:
-        st.success("📝 **배너 등록/편집** — Content & Link 탭에서 레이아웃 수만큼 URL 입력 후 **💾 저장**")
-    
-    if st.session_state.is_new_banner or st.session_state.selected_banner_data:
-        # 탭 메뉴
-        tab1, tab2, tab3 = st.tabs([
-            "Basic & Schedule", "Content & Link", "Targeting"
-        ])
-        
-        # 기본 데이터
-        banner_data = st.session_state.selected_banner_data or {}
-        is_new = st.session_state.is_new_banner
-        
-        # tab1에서 spot/page 결정 후 tab2·tab3·저장에서 공유
-        form_layout = "single"
-        form_max = 1
-        banner_group: List[Dict[str, Any]] = []
-        primary_banner: Dict[str, Any] = {}
-        content_slots: List[Dict[str, Any]] = []
-        
-        with tab1:
-            st.markdown("#### 기본 정보 및 일정")
-            
-            # 배너 위치 (신규일 때만 선택 가능, 좌측 선택 위치를 기본값으로)
-            if is_new:
-                spot_options = {f"{info['icon']} {info['name']}": spot_id 
-                               for spot_id, info in BANNER_SPOTS.items()}
-                spot_labels = list(spot_options.keys())
-                default_spot_id = st.session_state.selected_spot_id
-                default_spot_label = next(
-                    (label for label, sid in spot_options.items() if sid == default_spot_id),
-                    spot_labels[0],
-                )
-                default_spot_index = spot_labels.index(default_spot_label) if default_spot_label in spot_labels else 0
-                selected_spot_name = st.selectbox(
-                    "배너 위치",
-                    spot_labels,
-                    index=default_spot_index,
-                    key="banner_spot_select"
-                )
-                selected_spot_id = spot_options[selected_spot_name]
-            else:
-                current_spot = BANNER_SPOTS.get(banner_data.get("spotId", "web_top"), {})
-                st.text_input(
-                    "배너 위치",
-                    value=f"{current_spot.get('icon', '')} {current_spot.get('name', '')}",
-                    disabled=True,
-                    key="banner_spot_display"
-                )
-                selected_spot_id = banner_data.get("spotId", "web_top")
-            
-            # 노출 페이지 (페이지별 배너 영역 관리)
-            page_names = list(BANNER_PAGES.keys())
-            page_display = [BANNER_PAGES[pid]["name"] for pid in page_names]
-            current_page_id = banner_data.get("pageId", st.session_state.layout_page_id if is_new else "all")
-            if current_page_id not in BANNER_PAGES:
-                current_page_id = "all"
-            try:
-                page_index = page_names.index(current_page_id)
-            except ValueError:
-                page_index = 0
-            selected_page_name = st.selectbox(
-                "노출 페이지",
-                options=page_display,
-                index=page_index,
-                key="banner_page_id",
-                help="이 배너를 노출할 HTML 페이지. '전체 페이지'면 모든 페이지에 노출됩니다."
-            )
-            selected_page_id = page_names[page_display.index(selected_page_name)]
+    """.format(
+        banner_id=st.session_state.selected_banner_id or st.session_state.selected_spot_id,
+    ), unsafe_allow_html=True)
 
-            form_layout = get_banner_slot_setting(selected_spot_id, selected_page_id).get("displayLayout", "single")
-            form_max = BANNER_DISPLAY_LAYOUTS.get(form_layout, BANNER_DISPLAY_LAYOUTS["single"])["maxBanners"]
-            banner_group = _get_banner_group(selected_spot_id, selected_page_id, form_max)
-            primary_banner = banner_group[0] if banner_group else (banner_data if not is_new else {})
-            default_title = _get_group_primary_title(primary_banner) if banner_group or not is_new else banner_data.get("title", "")
-            
-            # 배너 제목 (그룹 공통)
-            banner_title = st.text_input(
-                "배너 제목 (관리자용, 공통)",
-                value=default_title,
-                key="banner_title",
-                placeholder="배너 세트 제목 (예: 메인 홈 프로모션)"
+    banner_data = st.session_state.selected_banner_data or {}
+    detail_spot_id = st.session_state.selected_spot_id
+    current_spot = BANNER_SPOTS.get(detail_spot_id, {})
+
+    tab1, tab2, tab3 = st.tabs([
+        "Basic & Schedule", "Content & Link", "Targeting"
+    ])
+
+    form_layout = "single"
+    form_max = 1
+    banner_group: List[Dict[str, Any]] = []
+    primary_banner: Dict[str, Any] = {}
+    selected_spot_id = detail_spot_id
+    selected_page_id = st.session_state.layout_page_id
+
+    with tab1:
+        st.markdown("#### 기본 정보 및 일정")
+
+        st.text_input(
+            "배너 위치",
+            value=f"{current_spot.get('icon', '')} {current_spot.get('name', '')}",
+            disabled=True,
+            key="banner_spot_display",
+        )
+
+        page_names = list(BANNER_PAGES.keys())
+        page_display = [BANNER_PAGES[pid]["name"] for pid in page_names]
+        current_page_id = banner_data.get("pageId", st.session_state.layout_page_id)
+        if current_page_id not in BANNER_PAGES:
+            current_page_id = st.session_state.layout_page_id
+        try:
+            page_index = page_names.index(current_page_id)
+        except ValueError:
+            page_index = page_names.index("index") if "index" in page_names else 0
+
+        selected_page_name = st.selectbox(
+            "노출 페이지",
+            options=page_display,
+            index=page_index,
+            key="banner_page_id",
+            help="이 배너를 노출할 HTML 페이지. '전체 페이지'면 모든 페이지에 노출됩니다.",
+        )
+        selected_page_id = page_names[page_display.index(selected_page_name)]
+
+        form_layout = get_banner_slot_setting(selected_spot_id, selected_page_id).get("displayLayout", "single")
+        form_max = BANNER_DISPLAY_LAYOUTS.get(form_layout, BANNER_DISPLAY_LAYOUTS["single"])["maxBanners"]
+        banner_group = _get_banner_group(selected_spot_id, selected_page_id, form_max)
+        primary_banner = banner_group[0] if banner_group else {}
+        default_title = _get_group_primary_title(primary_banner) if banner_group else ""
+
+        st.text_input(
+            "배너 제목 (관리자용, 공통)",
+            value=default_title,
+            key="banner_title",
+            placeholder="배너 세트 제목 (예: 메인 홈 프로모션)",
+        )
+
+        col_date1, col_date2 = st.columns(2)
+        start_dt = _parse_banner_datetime(primary_banner.get("displayStart") or banner_data.get("displayStart"))
+        end_dt = _parse_banner_datetime(
+            primary_banner.get("displayEnd") or banner_data.get("displayEnd"),
+            default=datetime.now() + timedelta(days=30),
+        )
+
+        with col_date1:
+            st.date_input("전시 시작일", value=start_dt.date(), key="banner_start_date")
+            st.time_input("시작 시간", value=start_dt.time(), key="banner_start_time")
+
+        with col_date2:
+            st.date_input("전시 종료일", value=end_dt.date(), key="banner_end_date")
+            st.time_input("종료 시간", value=end_dt.time(), key="banner_end_time")
+
+        end_preview = datetime.combine(
+            st.session_state.get("banner_end_date", end_dt.date()),
+            st.session_state.get("banner_end_time", end_dt.time()),
+        )
+        if end_preview < datetime.now():
+            st.error("⚠️ 전시 종료일이 이미 지났습니다. LIVE여도 사이트에 노출되지 않습니다.")
+
+        col_status1, col_status2 = st.columns(2)
+        with col_status1:
+            _status_default = primary_banner.get("status") or banner_data.get("status", "live")
+            st.selectbox(
+                "상태 (공통)",
+                list(BANNER_STATUS.keys()),
+                index=list(BANNER_STATUS.keys()).index(_status_default) if _status_default in BANNER_STATUS else 0,
+                format_func=lambda x: BANNER_STATUS[x],
+                key="banner_status",
             )
-            
-            # 전시 기간
-            col_date1, col_date2 = st.columns(2)
-            start_dt = _parse_banner_datetime(primary_banner.get("displayStart") or banner_data.get("displayStart"))
-            end_dt = _parse_banner_datetime(
-                primary_banner.get("displayEnd") or banner_data.get("displayEnd"),
-                default=datetime.now() + timedelta(days=30),
-            )
-            
-            with col_date1:
-                display_start = st.date_input(
-                    "전시 시작일",
-                    value=start_dt.date(),
-                    key="banner_start_date"
+
+        with col_status2:
+            st.metric("레이아웃 최대", f"{form_max}칸", help="등록한 수만 사이트에 노출")
+            if form_max == 1:
+                suggested_priority = _suggest_next_priority(
+                    get_banners_by_spot(selected_spot_id), selected_page_id
                 )
-                display_start_time = st.time_input(
-                    "시작 시간",
-                    value=start_dt.time(),
-                    key="banner_start_time"
-                )
-            
-            with col_date2:
-                display_end = st.date_input(
-                    "전시 종료일",
-                    value=end_dt.date(),
-                    key="banner_end_date"
-                )
-                display_end_time = st.time_input(
-                    "종료 시간",
-                    value=end_dt.time(),
-                    key="banner_end_time"
+                default_priority = int(banner_data.get("priority", suggested_priority)) if banner_data else suggested_priority
+                st.number_input(
+                    "우선순위",
+                    min_value=1,
+                    value=default_priority,
+                    key="banner_priority",
                 )
 
-            end_preview = datetime.combine(display_end, display_end_time)
-            if end_preview < datetime.now():
-                st.error("⚠️ 전시 종료일이 이미 지났습니다. LIVE여도 사이트에 노출되지 않습니다. 종료일을 미래로 변경하세요.")
-            
-            # 상태 및 우선순위
-            col_status1, col_status2 = st.columns(2)
-            
-            with col_status1:
-                _status_default = primary_banner.get("status") or banner_data.get("status", "live")
-                banner_status = st.selectbox(
-                    "상태 (공통)",
-                    list(BANNER_STATUS.keys()),
-                    index=list(BANNER_STATUS.keys()).index(_status_default) if _status_default in BANNER_STATUS else 0,
-                    format_func=lambda x: BANNER_STATUS[x],
-                    key="banner_status"
+        col_common, col_delete_all = st.columns(2)
+        with col_common:
+            if st.button("💾 공통 설정 저장", key="save_common_btn", use_container_width=True, type="primary"):
+                langs, countries = _read_targeting_from_session(
+                    primary_banner.get("targetLanguages"),
+                    primary_banner.get("targetCountries"),
                 )
-            
-            with col_status2:
-                if form_max > 1:
-                    st.metric("레이아웃 슬롯", f"{form_max}개", help="Content & Link 탭에서 URL 입력")
-                    st.caption("우선순위 1→N 자동 · 일정·타겟팅 **공통**")
-                    banner_priority = 1
+                common = _build_common_data_from_session(form_layout)
+                common["targetLanguages"] = langs
+                common["targetCountries"] = countries
+                updated = _save_group_common(selected_spot_id, selected_page_id, form_max, common)
+                if updated:
+                    st.success(f"✅ 등록된 {updated}개 배너에 공통 설정을 적용했습니다.")
+                    st.rerun()
                 else:
-                    suggested_priority = _suggest_next_priority(
-                        get_banners_by_spot(selected_spot_id), selected_page_id
-                    )
-                    default_priority = (
-                        suggested_priority if is_new
-                        else int(banner_data.get("priority", suggested_priority))
-                    )
-                    banner_priority = st.number_input(
-                        "우선순위",
-                        min_value=1,
-                        value=default_priority,
-                        key="banner_priority",
-                        help="숫자가 작을수록 먼저 표시됩니다.",
-                    )
-        
-        with tab2:
-            st.markdown("#### 콘텐츠 및 링크")
-            st.caption(
-                f"레이아웃 **{form_max}칸** — 아래 **{form_max}개** URL 영역에 이미지·링크를 입력하세요. "
-                f"(Basic & Schedule · Targeting 설정은 **공통** 적용)"
+                    st.warning("등록된 배너가 없습니다. Content & Link에서 칸별 등록하세요.")
+
+        with col_delete_all:
+            if st.button("🗑️ 전체 삭제", key="delete_all_btn", use_container_width=True, disabled=not banner_group):
+                if st.session_state.get("confirm_delete_all", False):
+                    deleted = _delete_banner_group(selected_spot_id, selected_page_id)
+                    st.session_state.confirm_delete_all = False
+                    st.session_state.selected_banner_id = None
+                    st.session_state.selected_banner_data = None
+                    st.success(f"배너 {deleted}개가 삭제되었습니다!")
+                    st.rerun()
+                else:
+                    st.session_state.confirm_delete_all = True
+                    st.warning("⚠️ 전체 삭제 — 다시 클릭하면 삭제됩니다.")
+                    st.rerun()
+
+    with tab2:
+        st.markdown("#### 콘텐츠 및 링크 (칸별 관리)")
+        st.caption(
+            f"최대 **{form_max}칸** · 등록한 칸만 노출 · 각 칸 **💾 등록/저장** · **🗑️ 삭제**"
+        )
+        _render_layout_size_guide(form_layout, selected_spot_id.startswith("mobile_"))
+
+        for slot_idx in range(1, form_max + 1):
+            slot_banner = next(
+                (b for b in banner_group if int(b.get("priority", 0)) == slot_idx),
+                None,
             )
-            _render_layout_size_guide(form_layout, selected_spot_id.startswith("mobile_"))
+            slot_data = slot_banner or {}
+            pos_label = {1: "좌1", 2: "좌2", 3: "좌3", 4: "좌4"}.get(slot_idx, str(slot_idx))
 
-            content_slots = []
-            for slot_idx in range(1, form_max + 1):
-                slot_banner = next(
-                    (b for b in banner_group if int(b.get("priority", 0)) == slot_idx),
-                    None,
-                )
-                if slot_banner is None and slot_idx <= len(banner_group):
-                    slot_banner = banner_group[slot_idx - 1]
-                slot_data = slot_banner or {}
+            if slot_banner:
+                slot_live = get_banner_status(slot_banner)
+                badge = {"live": "🟢 LIVE", "scheduled": "🟡 예약", "off": "⚫ OFF"}.get(slot_live, "⚫ OFF")
+                st.markdown(f"##### 🖼️ 칸 #{slot_idx} ({pos_label}) — **{badge}** · `{slot_banner.get('id', '')}`")
+            else:
+                st.markdown(f"##### 🖼️ 칸 #{slot_idx} ({pos_label}) — **비어있음**")
 
-                pos_label = {1: "좌1", 2: "좌2", 3: "좌3", 4: "좌4"}.get(slot_idx, str(slot_idx))
-                st.markdown(f"##### 🖼️ 배너 #{slot_idx} ({pos_label})")
+            with st.form(f"banner_slot_form_{slot_idx}", clear_on_submit=False):
                 col_web, col_mob = st.columns(2)
                 with col_web:
                     st.markdown("**웹**")
-                    web_image_url = st.text_input(
+                    st.text_input(
                         "웹 이미지 URL",
                         value=slot_data.get("webImageUrl", ""),
                         key=f"web_image_url_{slot_idx}",
-                        placeholder="https://firebasestorage.googleapis.com/.../banner.jpg?alt=media&token=...",
+                        placeholder="https://...?alt=media&token=...",
                     )
-                    web_link_url = st.text_input(
+                    st.text_input(
                         "웹 링크 URL",
                         value=slot_data.get("webLinkUrl", ""),
                         key=f"web_link_url_{slot_idx}",
-                        placeholder="https://example.com/page",
                     )
-                    _render_image_preview(web_image_url, max_width=320, caption=f"#{slot_idx} 웹 미리보기")
                 with col_mob:
                     st.markdown("**모바일**")
-                    mobile_image_url = st.text_input(
+                    st.text_input(
                         "모바일 이미지 URL",
                         value=slot_data.get("mobileImageUrl", ""),
                         key=f"mobile_image_url_{slot_idx}",
-                        placeholder="https://firebasestorage.googleapis.com/.../banner-mobile.jpg?alt=media&token=...",
                     )
-                    mobile_link_url = st.text_input(
+                    st.text_input(
                         "모바일 링크 URL",
                         value=slot_data.get("mobileLinkUrl", ""),
                         key=f"mobile_link_url_{slot_idx}",
-                        placeholder="https://example.com/page",
                     )
-                    _render_image_preview(mobile_image_url, max_width=240, caption=f"#{slot_idx} 모바일 미리보기")
 
-                content_slots.append({
-                    "id": slot_data.get("id"),
-                    "priority": slot_idx,
-                    "webImageUrl": web_image_url,
-                    "webLinkUrl": web_link_url,
-                    "mobileImageUrl": mobile_image_url,
-                    "mobileLinkUrl": mobile_link_url,
-                })
-                if slot_idx < form_max:
-                    st.markdown("---")
-        
-        with tab3:
-            st.markdown("#### 타겟팅 설정")
-            
-            # 타겟 언어 선택 (요구: 언어 옵션 추가, 프론트에서 언어 우선 적용)
-            st.markdown("##### 타겟 언어")
-            st.caption("배너를 표시할 언어를 선택하세요. (선택하지 않으면 모든 언어에 표시. 언어/국가 둘 다 설정된 경우 프론트에서는 **언어를 우선** 적용합니다.)")
-            selected_langs = primary_banner.get("targetLanguages") or banner_data.get("targetLanguages", [])
-            if not isinstance(selected_langs, list):
-                selected_langs = []
-            lang_options = list(SUPPORTED_LANGUAGES.keys())
-            lang_selected = []
-            cols = st.columns(3)
-            for i, lang_code in enumerate(lang_options):
-                with cols[i % 3]:
-                    info = SUPPORTED_LANGUAGES.get(lang_code, {})
-                    label = f"{lang_code} ({info.get('native', info.get('name', lang_code))})"
-                    if st.checkbox(label, value=lang_code in selected_langs, key=f"lang_{lang_code}"):
-                        lang_selected.append(lang_code)
-            all_selected_languages = lang_selected if lang_selected else None
-            
-            st.markdown("##### 타겟 국가")
-            st.caption("배너를 표시할 국가를 선택하세요. (선택하지 않으면 모든 국가에 표시)")
-            
-            # 국가를 지역별로 그룹화
-            asia_countries = ["KR", "JP", "CN", "SG", "MY", "VN", "ID", "TH", "PH", "IN"]
-            other_countries = [c for c in COUNTRIES.keys() if c not in asia_countries]
-            
-            selected_countries = primary_banner.get("targetCountries") or banner_data.get("targetCountries", [])
-            if not isinstance(selected_countries, list):
-                selected_countries = []
-            
-            # ASIA Pacific
-            with st.expander("🌏 ASIA Pacific", expanded=True):
-                asia_selected = []
-                for country_code in asia_countries:
-                    country_name = COUNTRIES.get(country_code, country_code)
-                    is_checked = st.checkbox(
-                        f"{country_code} ({country_name})",
-                        value=country_code in selected_countries,
-                        key=f"country_{country_code}"
-                    )
-                    if is_checked:
-                        asia_selected.append(country_code)
-            
-            # 기타 국가
-            with st.expander("🌍 기타 국가"):
-                other_selected = []
-                for country_code in other_countries:
-                    country_name = COUNTRIES.get(country_code, country_code)
-                    is_checked = st.checkbox(
-                        f"{country_code} ({country_name})",
-                        value=country_code in selected_countries,
-                        key=f"country_{country_code}"
-                    )
-                    if is_checked:
-                        other_selected.append(country_code)
-            
-            all_selected_countries = asia_selected + other_selected
-        
-        # 저장/삭제 버튼
-        st.markdown("---")
-        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
-        
-        with col_btn1:
-            delete_label = "🗑️ 세트 삭제" if form_max > 1 and banner_group else "🗑️ 삭제"
-            if st.button(delete_label, use_container_width=True, disabled=is_new and not banner_group):
-                if st.session_state.get('confirm_delete_banner', False):
-                    if form_max > 1 and banner_group:
-                        deleted = _delete_banner_group(selected_spot_id, selected_page_id)
-                        if deleted:
-                            st.success(f"배너 {deleted}개가 삭제되었습니다!")
-                    elif st.session_state.selected_banner_id:
-                        if delete_banner(st.session_state.selected_banner_id):
-                            st.success("배너가 삭제되었습니다!")
-                    st.session_state.selected_banner_id = None
-                    st.session_state.selected_banner_data = None
-                    st.session_state.is_new_banner = False
-                    st.session_state.confirm_delete_banner = False
-                    st.rerun()
-                else:
-                    st.session_state.confirm_delete_banner = True
-                    st.warning("⚠️ 정말 삭제하시겠습니까? 다시 클릭하면 삭제됩니다.")
-                    st.rerun()
-        
-        with col_btn2:
-            if st.button("❌ 취소", use_container_width=True, key="banner_cancel_btn"):
-                st.session_state.is_new_banner = False
-                st.session_state.selected_banner_id = None
-                st.session_state.selected_banner_data = None
-                st.session_state.confirm_delete_banner = False
-                _clear_banner_form_widget_state()
-                st.rerun()
-        
-        with col_btn3:
-            if st.button("💾 저장", use_container_width=True, type="primary"):
-                display_start_dt = datetime.combine(display_start, display_start_time)
-                display_end_dt = datetime.combine(display_end, display_end_time)
+                col_del, col_save = st.columns(2)
+                delete_clicked = col_del.form_submit_button(
+                    f"🗑️ #{slot_idx} 삭제",
+                    use_container_width=True,
+                    disabled=not slot_banner,
+                )
+                save_clicked = col_save.form_submit_button(
+                    f"💾 #{slot_idx} 등록/저장",
+                    use_container_width=True,
+                    type="primary",
+                )
 
-                common_data = {
-                    "title": banner_title,
-                    "displayStart": display_start_dt.isoformat(),
-                    "displayEnd": display_end_dt.isoformat(),
-                    "status": banner_status,
-                    "displayLayout": form_layout,
-                    "targetLanguages": all_selected_languages,
-                    "targetCountries": all_selected_countries if all_selected_countries else None,
-                }
+            if slot_banner:
+                preview_url = (
+                    st.session_state.get(f"web_image_url_{slot_idx}")
+                    or slot_data.get("webImageUrl", "")
+                )
+                _render_image_preview(preview_url, max_width=280, caption=f"#{slot_idx} 미리보기")
 
-                if form_max > 1:
-                    ok, saved_ids = _save_banner_group(
-                        selected_spot_id,
-                        selected_page_id,
-                        form_max,
-                        common_data,
-                        content_slots,
-                    )
-                    if ok:
-                        st.success(f"✅ 배너 {len(saved_ids)}개가 저장되었습니다!")
-                        st.session_state.is_new_banner = False
-                        if saved_ids:
-                            st.session_state.selected_banner_id = saved_ids[0]
-                            st.session_state.selected_banner_data = get_banner_by_id(saved_ids[0])
+            confirm_key = f"confirm_delete_slot_{slot_idx}"
+            if delete_clicked:
+                if st.session_state.get(confirm_key, False):
+                    if _delete_single_slot(selected_spot_id, selected_page_id, slot_idx):
+                        st.session_state[confirm_key] = False
+                        st.success(f"✅ 칸 #{slot_idx} 배너가 삭제되었습니다.")
                         st.rerun()
                     else:
-                        st.warning("저장할 이미지 URL이 없습니다. Content & Link 탭에서 URL을 입력하세요.")
+                        st.warning("삭제할 배너가 없습니다.")
                 else:
-                    slot = content_slots[0] if content_slots else {}
-                    banner_data_to_save = {
-                        **common_data,
-                        "spotId": selected_spot_id,
-                        "pageId": selected_page_id,
-                        "priority": banner_priority,
-                        "webImageUrl": slot.get("webImageUrl", ""),
-                        "webLinkUrl": slot.get("webLinkUrl", ""),
-                        "mobileImageUrl": slot.get("mobileImageUrl", ""),
-                        "mobileLinkUrl": slot.get("mobileLinkUrl", ""),
-                    }
-                    if is_new:
-                        import uuid
-                        new_banner_id = f"banner_{uuid.uuid4().hex[:8]}"
-                        if create_banner(new_banner_id, banner_data_to_save):
-                            st.success("✅ 배너가 생성되었습니다!")
-                            st.session_state.is_new_banner = False
-                            st.session_state.selected_banner_id = new_banner_id
-                            st.session_state.selected_banner_data = get_banner_by_id(new_banner_id)
-                            st.rerun()
-                    else:
-                        if update_banner(st.session_state.selected_banner_id, banner_data_to_save):
-                            st.success("✅ 배너가 업데이트되었습니다!")
-                            st.session_state.selected_banner_data = get_banner_by_id(st.session_state.selected_banner_id)
-                            st.rerun()
-    else:
-        st.info(
-            "👆 **➕ 배너 등록/편집** 을 클릭하면 우측에 입력 폼이 나타납니다.  \n"
-            "1줄 4개 레이아웃은 Content & Link 탭에서 **URL 4개**를 한 번에 입력·저장합니다."
-        )
+                    st.session_state[confirm_key] = True
+                    st.warning(f"⚠️ 칸 #{slot_idx} 삭제 — 다시 **🗑️ #{slot_idx} 삭제**를 누르면 삭제됩니다.")
+                    st.rerun()
+
+            if save_clicked:
+                st.session_state[confirm_key] = False
+                langs, countries = _read_targeting_from_session(
+                    primary_banner.get("targetLanguages"),
+                    primary_banner.get("targetCountries"),
+                )
+                common = _build_common_data_from_session(form_layout, slot_idx)
+                common["targetLanguages"] = langs
+                common["targetCountries"] = countries
+                slot_content = {
+                    "id": slot_data.get("id"),
+                    "webImageUrl": st.session_state.get(f"web_image_url_{slot_idx}", ""),
+                    "webLinkUrl": st.session_state.get(f"web_link_url_{slot_idx}", ""),
+                    "mobileImageUrl": st.session_state.get(f"mobile_image_url_{slot_idx}", ""),
+                    "mobileLinkUrl": st.session_state.get(f"mobile_link_url_{slot_idx}", ""),
+                }
+                ok, banner_id, err = _save_single_slot(
+                    selected_spot_id,
+                    selected_page_id,
+                    slot_idx,
+                    form_max,
+                    common,
+                    slot_content,
+                )
+                if ok:
+                    st.success(f"✅ 칸 #{slot_idx} 배너가 저장되었습니다.")
+                    if banner_id:
+                        st.session_state.selected_banner_id = banner_id
+                        st.session_state.selected_banner_data = get_banner_by_id(banner_id)
+                    st.rerun()
+                else:
+                    st.error(err or "저장에 실패했습니다.")
+
+            if slot_idx < form_max:
+                st.markdown("---")
+
+    with tab3:
+        st.markdown("#### 타겟팅 설정")
+        st.caption("변경 후 **Basic & Schedule** 탭의 **💾 공통 설정 저장** 또는 칸별 **등록/저장**으로 적용하세요.")
+
+        st.markdown("##### 타겟 언어")
+        selected_langs = primary_banner.get("targetLanguages") or banner_data.get("targetLanguages", [])
+        if not isinstance(selected_langs, list):
+            selected_langs = []
+        lang_options = list(SUPPORTED_LANGUAGES.keys())
+        cols = st.columns(3)
+        for i, lang_code in enumerate(lang_options):
+            with cols[i % 3]:
+                info = SUPPORTED_LANGUAGES.get(lang_code, {})
+                label = f"{lang_code} ({info.get('native', info.get('name', lang_code))})"
+                st.checkbox(label, value=lang_code in selected_langs, key=f"lang_{lang_code}")
+
+        st.markdown("##### 타겟 국가")
+        asia_countries = ["KR", "JP", "CN", "SG", "MY", "VN", "ID", "TH", "PH", "IN"]
+        other_countries = [c for c in COUNTRIES.keys() if c not in asia_countries]
+        selected_countries = primary_banner.get("targetCountries") or banner_data.get("targetCountries", [])
+        if not isinstance(selected_countries, list):
+            selected_countries = []
+
+        with st.expander("🌏 ASIA Pacific", expanded=True):
+            for country_code in asia_countries:
+                country_name = COUNTRIES.get(country_code, country_code)
+                st.checkbox(
+                    f"{country_code} ({country_name})",
+                    value=country_code in selected_countries,
+                    key=f"country_{country_code}",
+                )
+
+        with st.expander("🌍 기타 국가"):
+            for country_code in other_countries:
+                country_name = COUNTRIES.get(country_code, country_code)
+                st.checkbox(
+                    f"{country_code} ({country_name})",
+                    value=country_code in selected_countries,
+                    key=f"country_{country_code}",
+                )
 
 # 사이드바 통계
 with st.sidebar:

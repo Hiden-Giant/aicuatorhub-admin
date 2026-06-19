@@ -106,7 +106,7 @@ BANNER_DISPLAY_LAYOUTS = {
         "maxBanners": 4,
         "webSize": "335 × 445px (비율 3:4) × 4장",
         "mobileSize": "170 × 230px (비율 3:4) × 4장",
-        "description": "포스터 스타일 4열 그리드 (모바일 2×2)",
+        "description": "포스터 스타일 최대 4열 (등록 수만 노출, 모바일 2×2)",
     },
 }
 
